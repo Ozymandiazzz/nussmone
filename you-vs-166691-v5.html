@@ -1,0 +1,1233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>YOU vs 166,691 — Beat the Fly Brain</title>
+
+<!-- Open Graph / share preview — swap the image when a real card is generated -->
+<meta property="og:title" content="YOU vs 166,691 — Can you beat a real mapped fly brain?">
+<meta property="og:description" content="Scientists mapped 166,691 neurons in a fruit fly nervous system. Catch the fly before its escape circuit fires.">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary_large_image">
+
+<style>
+  :root{
+    --bg:#050212;
+    --panel:#0c0722;
+    --edge:rgba(124,77,255,.32);
+    --accent1:#ff6ec7; --accent2:#7c4dff; --accent3:#00e5ff;
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-left: env(safe-area-inset-left, 0px);
+    --safe-right: env(safe-area-inset-right, 0px);
+  }
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg);
+    font-family: -apple-system, 'Segoe UI', system-ui, sans-serif;
+    color: #fff;
+    touch-action: none;
+    overscroll-behavior: none;
+    user-select: none;
+  }
+
+  #app {
+    position: relative;
+    height: 100dvh;
+    width: 100vw;
+    display: flex;
+    flex-direction: column;
+    padding-top: var(--safe-top);
+    padding-left: var(--safe-left);
+    padding-right: var(--safe-right);
+  }
+
+  /* ---------- top bar (rank/best/attempt) always outside the arena ---------- */
+  #topbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 14px 6px;
+    font-size: 12px;
+    color: #9d90d8;
+    z-index: 15;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  #topbar b { color: #fff; }
+  #topbarRight { display:flex; align-items:center; gap:8px; }
+  #rankBadge {
+    font-size:10px; color:#d7d0ff; background:rgba(10,5,30,.56);
+    border:1px solid rgba(124,77,255,.32); border-radius:999px; padding:5px 9px;
+  }
+  #langSelect {
+    background:rgba(10,5,30,.75); color:#fff; border:1px solid rgba(124,77,255,.5);
+    border-radius:10px; padding:5px 7px; font-size:11px; outline:none;
+  }
+
+  #title { text-align: center; padding: 0 0 6px; z-index: 5; }
+  #title h1 {
+    font-size: 17px; letter-spacing: 0.5px;
+    background: linear-gradient(90deg,#ff6ec7,#7c4dff,#00e5ff);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  #title p { font-size: 10.5px; color: #8f84b8; margin-top: 2px; }
+
+  /* ---------- main row: arena (gameplay) + sidebar (brain) ---------- */
+  #layoutRow {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  #arena {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
+    overflow: hidden;
+  }
+  #arena canvas { position:absolute; top:0; left:0; width:100%; height:100%; display:block; }
+
+  #flash { position:absolute; inset:0; background:#fff; opacity:0; pointer-events:none; z-index:8; }
+
+  #reactionPopup {
+    position:absolute; top:36%; left:50%; transform:translate(-50%,-50%);
+    text-align:center; z-index:9; display:none; pointer-events:none;
+  }
+  #reactionPopup h2 { color:#ffcc4d; font-size:20px; text-shadow: 0 0 12px rgba(255,204,77,0.6); }
+  #reactionPopup p { font-size:11.5px; color:#e0d8ff; margin-top:4px; }
+  #reactionPopup .escapeCount { font-size:11px; color:#ff9d7a; margin-top:2px; letter-spacing:.08em; }
+
+  #mobileHint {
+    position:absolute; left:50%; top:14px; transform:translateX(-50%);
+    z-index:6; font-size:11px; color:#b9afe8; background:rgba(10,5,30,.5);
+    border-radius:999px; padding:7px 12px; pointer-events:none;
+    display:flex; align-items:center; gap:8px; transition: opacity .4s ease;
+  }
+  #mobileHint .fingerDot {
+    width:8px; height:8px; border-radius:50%; background:#00e5ff;
+    animation: fingerSlide 1.6s ease-in-out infinite;
+  }
+  @keyframes fingerSlide { 0%,100%{ transform:translateX(-10px); opacity:.4;} 50%{ transform:translateX(10px); opacity:1;} }
+
+  /* ---------- sidebar / brain panel ---------- */
+  #sidebar {
+    position: relative;
+    z-index: 12;
+    background: linear-gradient(180deg,rgba(12,7,34,.92),rgba(7,3,22,.96));
+    border-top: 1px solid var(--edge);
+    backdrop-filter: blur(6px);
+    display: flex;
+    flex-direction: column;
+    flex: 0 0 auto;
+    height: 78px;
+    overflow: hidden;
+    transition: height .28s cubic-bezier(.2,.8,.2,1);
+    padding-bottom: var(--safe-bottom);
+  }
+  #sidebar.expanded { height: min(46vh, 380px); }
+
+  #sidebarHandle {
+    display:flex; align-items:center; justify-content:space-between;
+    padding: 8px 12px 4px; cursor:pointer; flex:0 0 auto;
+  }
+  #sidebarHandle .grip { width:34px; height:4px; border-radius:3px; background:rgba(255,255,255,.18); margin:0 auto; }
+  #sidebarTitleRow { display:flex; align-items:center; justify-content:space-between; width:100%; }
+  #sidebarTitleRow b { font-size:11px; letter-spacing:.08em; color:#e7e0ff; }
+  #sidebarTitleRow span.sub { font-size:9px; color:#9e94c6; }
+  #statusPill {
+    font-size:9.5px; padding:3px 8px; border-radius:999px; letter-spacing:.05em;
+    background:rgba(124,77,255,.18); color:#c9c0ff; border:1px solid rgba(124,77,255,.35);
+    transition: background .2s, color .2s, border-color .2s;
+  }
+  #statusPill.ready { background:rgba(255,80,60,.22); color:#ffb199; border-color:rgba(255,110,90,.5); }
+
+  #sidebarBody { flex:1; min-height:0; display:flex; flex-direction:column; padding: 2px 12px 10px; gap:8px; }
+  #brainStage { position:relative; flex:1; min-height:60px; border-radius:12px; overflow:hidden; background:rgba(124,77,255,.04); }
+  #brainImg { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; opacity:.32; }
+  #brainCanvas { position:absolute; inset:0; width:100%; height:100%; display:block; }
+
+  .neuroLabels { display:flex; justify-content:space-between; font-size:9px; color:#8f84c0; padding: 0 2px; }
+
+  #neuroHud { flex:0 0 auto; }
+  .bar-row { display:flex; align-items:center; gap:6px; margin:3px 0; font-size:10px; color:#c9c0ff; }
+  .bar-row span.label { width: 68px; flex-shrink:0; }
+  .bar-track { flex:1; height:7px; background:rgba(255,255,255,0.08); border-radius:4px; overflow:hidden; }
+  .bar-fill { height:100%; width:0%; border-radius:4px; transition: width 0.08s linear; }
+  #fillLPLC2 { background: linear-gradient(90deg,#00e5ff,#7c4dff); }
+  #fillLC4 { background: linear-gradient(90deg,#ff6ec7,#ff4d6d); }
+  #fillGF { background: linear-gradient(90deg,#ffcc4d,#ff4d4d); }
+
+  #statusLines { display:flex; flex-direction:column; gap:2px; font-size:9.5px; color:#a89fd6; }
+  #statusLines .on { color:#66f4ff; }
+
+  /* ---------- desktop layout: sidebar becomes a fixed side column ---------- */
+  @media (min-width: 880px) {
+    #layoutRow { flex-direction: row; }
+    #arena { flex: 1 1 72%; }
+    #sidebar {
+      flex: 0 0 320px;
+      height: auto !important;
+      max-width: 340px;
+      border-top: none;
+      border-left: 1px solid var(--edge);
+    }
+    #sidebarHandle { cursor: default; }
+    #sidebarHandle .grip { display:none; }
+    #brainStage { min-height: 220px; }
+  }
+  @media (pointer: fine) { #mobileHint { display:none !important; } }
+
+  /* ---------- start / end overlay ---------- */
+  #overlay {
+    position:absolute; inset:0; background:rgba(5,2,18,0.94);
+    display:flex; align-items:center; justify-content:center; z-index:30;
+    padding: 20px;
+  }
+  #overlay[hidden] { display:none; }
+  #overlayCard { max-width: 340px; width:100%; text-align:center; }
+  #overlayCard h2 { font-size: 23px; margin-bottom: 8px; color:#fff; }
+  #overlayCard .accent { background: linear-gradient(90deg,#ff6ec7,#7c4dff,#00e5ff); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+  #overlayCard p { font-size: 13px; color:#c9c0ff; line-height:1.5; margin-bottom: 14px; }
+  #statLine { font-size:12.5px; color:#fff; margin: 10px 0; line-height:1.85; text-align:left; }
+  #statLine b { color:#00e5ff; }
+  .btn {
+    display:inline-block; background: linear-gradient(90deg,#7c4dff,#00e5ff);
+    border:none; padding: 12px 26px; border-radius: 24px; color:#060215;
+    font-weight:700; font-size:14px; cursor:pointer; margin: 6px 4px;
+  }
+  .btn.secondary { background: transparent; border: 1px solid #7c4dff; color:#c9c0ff; }
+  #source-note { font-size: 9px; color:#5f5680; margin-top: 14px; line-height:1.4; }
+
+  #leaderboard {
+    margin-top:10px; text-align:left; font-size:11px;
+    background:rgba(255,255,255,.035); border:1px solid rgba(124,77,255,.22);
+    border-radius:12px; padding:10px 12px;
+  }
+  #leaderboard h3 { font-size:12px; margin-bottom:6px; color:#fff; }
+  .lb-row { display:flex; justify-content:space-between; gap:10px; padding:3px 0; color:#c9c0ff; }
+  .lb-row.me { color:#00e5ff; font-weight:700; }
+
+  /* slot reserved for a future H5 Games interstitial between rounds */
+  #adSlotInterstitial { display:none; }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <div id="topbar">
+    <span><span data-i18n="attempt">Attempt</span> <b id="attemptNum">1</b>/3</span>
+    <div id="topbarRight">
+      <span id="rankBadge"><span data-i18n="rank">Global rank</span>: <b id="rankVal">—</b></span>
+      <span id="bestTag"><span data-i18n="best">Best</span>: <b id="bestVal">—</b></span>
+      <select id="langSelect" aria-label="Language">
+        <option value="en">EN</option>
+        <option value="pt">PT</option>
+        <option value="zh">中文</option>
+        <option value="es">ES</option>
+        <option value="ru">RU</option>
+      </select>
+    </div>
+  </div>
+
+  <div id="title">
+    <h1>YOU vs 166,691</h1>
+    <p data-i18n="subtitle">166,691 mapped neurons. Catch the fly before its escape circuit fires.</p>
+  </div>
+
+  <div id="layoutRow">
+    <div id="arena">
+      <div id="mobileHint"><span class="fingerDot"></span><span data-i18n="mobileHint">Drag anywhere to move. Release to swat.</span></div>
+      <canvas id="game"></canvas>
+      <div id="flash"></div>
+      <div id="reactionPopup">
+        <h2 id="reactTitle">THE FLY SAW YOU</h2>
+        <p id="reactSub">Reaction: 47ms · Giant Fiber threshold reached</p>
+        <div class="escapeCount" id="reactEscapeCount">ESCAPE 1/3</div>
+      </div>
+    </div>
+
+    <div id="sidebar">
+      <div id="sidebarHandle" onclick="toggleSidebar()">
+        <div class="grip"></div>
+      </div>
+      <div id="sidebarBody">
+        <div id="sidebarTitleRow">
+          <div>
+            <b data-i18n="brainLive">LIVE FLY BRAIN</b><br>
+            <span class="sub" data-i18n="brainSub">visual → decision → escape</span>
+          </div>
+          <span id="statusPill" data-i18n="statusSafe">SAFE</span>
+        </div>
+        <div id="brainStage">
+          <!-- REPLACE WITH OFFICIAL MALECNS/FLYWIRE CONNECTOME ASSET -->
+          <img id="brainImg" src="assets/fly-connectome.png" alt="" draggable="false">
+          <canvas id="brainCanvas"></canvas>
+        </div>
+        <div class="neuroLabels">
+          <span data-i18n="visualInput">VISUAL INPUT</span>
+          <span data-i18n="threatIntegration">THREAT INTEGRATION</span>
+        </div>
+        <div id="neuroHud">
+          <div class="bar-row"><span class="label">LPLC2</span><div class="bar-track"><div class="bar-fill" id="fillLPLC2"></div></div></div>
+          <div class="bar-row"><span class="label">LC4</span><div class="bar-track"><div class="bar-fill" id="fillLC4"></div></div></div>
+          <div class="bar-row"><span class="label">Giant Fiber</span><div class="bar-track"><div class="bar-fill" id="fillGF"></div></div></div>
+        </div>
+        <div id="statusLines">
+          <div><span data-i18n="brainNote">Activity visualization based on simplified escape-circuit dynamics.</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="overlay">
+    <div id="overlayCard">
+      <h2><span class="accent">YOU</span> vs <span class="accent">166,691</span></h2>
+      <p data-i18n="intro">Scientists mapped 166,691 neurons in a fruit fly nervous system. Catch the fly. 3 attempts.</p>
+      <button class="btn" onclick="startGame()" data-i18n="play">Play</button>
+      <div id="source-note" data-i18n="sourceNote">Escape-circuit activity is a simplified computational model based on published connectome research.</div>
+    </div>
+  </div>
+
+  <!-- reserved for a real AdSense H5 Games interstitial once the account is approved -->
+  <div id="adSlotInterstitial"></div>
+
+</div>
+
+<script>
+/* =========================================================================
+   CONFIG
+   ========================================================================= */
+const CONFIG = {
+  MAX_ATTEMPTS: 3,
+  MAX_ESCAPES_PER_ATTEMPT: 3,
+  STRIKE_RADIUS_PAD: 26,
+  FLY_RADIUS_DESKTOP: 24,
+  FLY_RADIUS_MOBILE: 30,
+  SWATTER_START_Y_RATIO: 0.78,
+  FLY_START_Y_RATIO: 0.30,
+  ESCAPE_MIN_DIST: 250,
+  ESCAPE_MAX_DIST: 450,
+  ESCAPE_JITTER_DEG: [20, 35],
+  ESCAPE_DURATION_MS: [180, 280],
+  ESCAPE_MARGIN: 40,
+  RECOVERY_MS: 550,
+  ATTEMPT_END_PAUSE_MS: 900,
+  NEURAL_SMOOTH: 0.22,
+  NEURAL_NOISE: 3,
+  GF_RISE_THRESHOLD: 80,
+  GF_FALL_THRESHOLD: 46,
+  DPR_MAX: 2
+};
+
+/* =========================================================================
+   I18N
+   ========================================================================= */
+const I18N = {
+  en: {
+    brainLive:"LIVE FLY BRAIN", brainSub:"visual → decision → escape",
+    attempt:"Attempt", best:"Best", rank:"Global rank",
+    subtitle:"166,691 mapped neurons. Catch the fly before its escape circuit fires.",
+    intro:"Scientists mapped 166,691 neurons in a fruit fly nervous system. Catch the fly. 3 attempts.",
+    play:"Play",
+    sourceNote:"Escape-circuit activity is a simplified computational model based on published connectome research.",
+    brainNote:"Activity visualization based on simplified escape-circuit dynamics.",
+    mobileHint:"Drag anywhere to move. Release to swat.",
+    visualInput:"VISUAL INPUT", threatIntegration:"THREAT INTEGRATION",
+    statusSafe:"SAFE", statusReady:"ESCAPE READY",
+    saw:"THE FLY SAW YOU", caught:"YOU CAUGHT THE FLY", brainWon:"THE FLY BRAIN WON",
+    again:"Play again", retry:"Try again", share:"Share", score:"Score", record:"Best",
+    neurons:"166,691 mapped neurons", rankLabel:"Global rank",
+    caughtDesc:"You got close enough before the escape circuit fired.",
+    lostDesc:"Three attempts used. The escape circuit detected you every time.",
+    leaderboard:"Top players", you:"YOU", offline:"Preview rank",
+    copied:"Share text copied.",
+    escapesCaused:"Escapes caused", closestApproach:"Closest approach",
+    giantFiberPeak:"Giant Fiber peak", timeLabel:"Time",
+    escapeOf:"ESCAPE {n}/{max}", outOfEscapes:"OUT OF ESCAPES"
+  },
+  pt: {
+    brainLive:"CÉREBRO DA MOSCA AO VIVO", brainSub:"visual → decisão → fuga",
+    attempt:"Tentativa", best:"Recorde", rank:"Ranking global",
+    subtitle:"166.691 neurônios mapeados. Pegue a mosca antes que o circuito de fuga dispare.",
+    intro:"Cientistas mapearam 166.691 neurônios do sistema nervoso de uma mosca-das-frutas. Pegue a mosca. 3 tentativas.",
+    play:"Jogar",
+    sourceNote:"A atividade do circuito de fuga é um modelo computacional simplificado baseado em pesquisa de connectoma publicada.",
+    brainNote:"Visualização de atividade baseada em dinâmica simplificada do circuito de fuga.",
+    mobileHint:"Arraste em qualquer lugar para mover. Solte para bater.",
+    visualInput:"ENTRADA VISUAL", threatIntegration:"INTEGRAÇÃO DE AMEAÇA",
+    statusSafe:"SEGURA", statusReady:"PRONTA PARA FUGIR",
+    saw:"A MOSCA VIU VOCÊ", caught:"VOCÊ PEGOU A MOSCA", brainWon:"O CÉREBRO DELA VENCEU",
+    again:"Jogar de novo", retry:"Tentar de novo", share:"Compartilhar", score:"Pontuação", record:"Recorde",
+    neurons:"166.691 neurônios mapeados", rankLabel:"Ranking global",
+    caughtDesc:"Você chegou perto o bastante antes do circuito de fuga disparar.",
+    lostDesc:"Três tentativas usadas. O circuito de fuga te detectou toda vez.",
+    leaderboard:"Top jogadores", you:"VOCÊ", offline:"Ranking preview",
+    copied:"Texto copiado.",
+    escapesCaused:"Fugas provocadas", closestApproach:"Aproximação mínima",
+    giantFiberPeak:"Pico do Giant Fiber", timeLabel:"Tempo",
+    escapeOf:"FUGA {n}/{max}", outOfEscapes:"SEM MAIS FUGAS"
+  },
+  zh: {
+    brainLive:"果蝇大脑实时活动", brainSub:"视觉 → 决策 → 逃逸",
+    attempt:"尝试", best:"最佳", rank:"全球排名",
+    subtitle:"166,691 个已绘制神经元。赶在逃逸回路触发前抓住果蝇。",
+    intro:"科学家绘制了果蝇神经系统中的 166,691 个神经元。抓住果蝇。3 次机会。",
+    play:"开始",
+    sourceNote:"逃逸回路活动是基于已发表连接组研究的简化计算模型。",
+    brainNote:"活动可视化基于简化的逃逸回路动态模型。",
+    mobileHint:"在任意位置拖动来移动，松手即可击打。",
+    visualInput:"视觉输入", threatIntegration:"威胁整合",
+    statusSafe:"安全", statusReady:"准备逃逸",
+    saw:"果蝇发现你了", caught:"你抓到果蝇了", brainWon:"果蝇大脑赢了",
+    again:"再玩一次", retry:"重试", share:"分享", score:"得分", record:"最佳",
+    neurons:"166,691 个已绘制神经元", rankLabel:"全球排名",
+    caughtDesc:"你在逃逸回路触发前成功接近并击中了它。",
+    lostDesc:"3 次机会已用完。每次都被逃逸回路发现。",
+    leaderboard:"排行榜", you:"你", offline:"预览排名",
+    copied:"分享文本已复制。",
+    escapesCaused:"引发的逃逸次数", closestApproach:"最近距离",
+    giantFiberPeak:"Giant Fiber 峰值", timeLabel:"用时",
+    escapeOf:"逃逸 {n}/{max}", outOfEscapes:"逃逸次数已用完"
+  },
+  es: {
+    brainLive:"CEREBRO DE MOSCA EN VIVO", brainSub:"visual → decisión → escape",
+    attempt:"Intento", best:"Récord", rank:"Ranking global",
+    subtitle:"166.691 neuronas mapeadas. Atrapa la mosca antes de que se active su circuito de escape.",
+    intro:"Científicos mapearon 166.691 neuronas del sistema nervioso de una mosca de la fruta. Atrapa la mosca. 3 intentos.",
+    play:"Jugar",
+    sourceNote:"La actividad del circuito de escape es un modelo computacional simplificado basado en investigación de conectoma publicada.",
+    brainNote:"Visualización de actividad basada en dinámica simplificada del circuito de escape.",
+    mobileHint:"Arrastra en cualquier lugar para mover. Suelta para golpear.",
+    visualInput:"ENTRADA VISUAL", threatIntegration:"INTEGRACIÓN DE AMENAZA",
+    statusSafe:"SEGURA", statusReady:"LISTA PARA ESCAPAR",
+    saw:"LA MOSCA TE VIO", caught:"ATRAPASTE LA MOSCA", brainWon:"GANÓ EL CEREBRO DE LA MOSCA",
+    again:"Jugar otra vez", retry:"Intentar de nuevo", share:"Compartir", score:"Puntuación", record:"Récord",
+    neurons:"166.691 neuronas mapeadas", rankLabel:"Ranking global",
+    caughtDesc:"Llegaste lo bastante cerca antes de que se activara el circuito de escape.",
+    lostDesc:"Usaste los 3 intentos. El circuito de escape te detectó cada vez.",
+    leaderboard:"Mejores jugadores", you:"TÚ", offline:"Ranking preview",
+    copied:"Texto copiado.",
+    escapesCaused:"Escapes provocados", closestApproach:"Aproximación más cercana",
+    giantFiberPeak:"Pico de Giant Fiber", timeLabel:"Tiempo",
+    escapeOf:"ESCAPE {n}/{max}", outOfEscapes:"SIN MÁS ESCAPES"
+  },
+  ru: {
+    brainLive:"МОЗГ МУХИ В РЕАЛЬНОМ ВРЕМЕНИ", brainSub:"зрение → решение → побег",
+    attempt:"Попытка", best:"Рекорд", rank:"Мировой рейтинг",
+    subtitle:"166 691 картированный нейрон. Поймай муху до срабатывания цепи побега.",
+    intro:"Учёные картировали 166 691 нейрон нервной системы плодовой мушки. Поймай муху. 3 попытки.",
+    play:"Играть",
+    sourceNote:"Активность цепи побега — упрощённая вычислительная модель на основе опубликованных данных коннектома.",
+    brainNote:"Визуализация активности основана на упрощённой динамике цепи побега.",
+    mobileHint:"Тяни в любом месте, чтобы двигать. Отпусти для удара.",
+    visualInput:"ЗРИТЕЛЬНЫЙ ВХОД", threatIntegration:"ИНТЕГРАЦИЯ УГРОЗЫ",
+    statusSafe:"БЕЗОПАСНО", statusReady:"ГОТОВА К ПОБЕГУ",
+    saw:"МУХА ТЕБЯ ЗАМЕТИЛА", caught:"ТЫ ПОЙМАЛ МУХУ", brainWon:"МОЗГ МУХИ ПОБЕДИЛ",
+    again:"Играть снова", retry:"Ещё раз", share:"Поделиться", score:"Счёт", record:"Рекорд",
+    neurons:"166 691 картированный нейрон", rankLabel:"Мировой рейтинг",
+    caughtDesc:"Ты подобрался достаточно близко до срабатывания цепи побега.",
+    lostDesc:"Все 3 попытки использованы. Цепь побега замечала тебя каждый раз.",
+    leaderboard:"Лучшие игроки", you:"ТЫ", offline:"Предпросмотр рейтинга",
+    copied:"Текст скопирован.",
+    escapesCaused:"Спровоцировано побегов", closestApproach:"Ближайшее приближение",
+    giantFiberPeak:"Пик Giant Fiber", timeLabel:"Время",
+    escapeOf:"ПОБЕГ {n}/{max}", outOfEscapes:"ПОБЕГИ ЗАКОНЧИЛИСЬ"
+  }
+};
+
+let currentLang = localStorage.getItem('yv_lang') || 'en';
+const langSelect = document.getElementById('langSelect');
+langSelect.value = currentLang;
+
+function tr(k, vars){
+  let s = (I18N[currentLang] && I18N[currentLang][k]) || I18N.en[k] || k;
+  if (vars) Object.keys(vars).forEach(v => { s = s.replace('{'+v+'}', vars[v]); });
+  return s;
+}
+
+function applyLanguage(){
+  document.documentElement.lang = currentLang === 'pt' ? 'pt-BR' : currentLang;
+  document.querySelectorAll('[data-i18n]').forEach(el=>{
+    el.textContent = tr(el.dataset.i18n);
+  });
+  langSelect.value = currentLang;
+}
+langSelect.addEventListener('change', e=>{
+  currentLang = e.target.value;
+  localStorage.setItem('yv_lang', currentLang);
+  applyLanguage();
+});
+
+/* =========================================================================
+   STATE
+   ========================================================================= */
+const GameState = {
+  IDLE: 'IDLE',
+  PLAYING: 'PLAYING',
+  ESCAPING: 'ESCAPING',
+  RECOVERING: 'RECOVERING',
+  CAUGHT: 'CAUGHT',
+  ATTEMPT_END: 'ATTEMPT_END',
+  GAME_OVER: 'GAME_OVER'
+};
+let gameState = GameState.IDLE;
+
+const state = {
+  attempt: 1,
+  escapesUsed: 0,
+  escapesTotal: 0,
+  minDist: Infinity,
+  peakGF: 0,
+  runStart: 0,
+  best: Number(localStorage.getItem('yv_best') || 0)
+};
+
+const neural = { lplc2: 0, lc4: 0, gf: 0, gfLatched: false, lastDist: null };
+
+let fly = null;
+const swatter = { x:0, y:0, vx:0, vy:0, tilt:0, strikeAnim:0 };
+
+let W = 0, H = 0, DPR = 1, BW = 0, BH = 0;
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const brainCanvas = document.getElementById('brainCanvas');
+const bctx = brainCanvas.getContext('2d');
+
+/* =========================================================================
+   ASSETS
+   ========================================================================= */
+const assets = { fly: { img: new Image(), ready:false }, brain: { img: document.getElementById('brainImg'), ready:false } };
+assets.fly.img.onload = () => { assets.fly.ready = true; };
+assets.fly.img.onerror = () => { assets.fly.ready = false; };
+assets.fly.img.src = 'assets/fly.png';
+
+assets.brain.img.onload = () => { assets.brain.ready = true; };
+assets.brain.img.onerror = () => { assets.brain.ready = false; assets.brain.img.style.display = 'none'; };
+
+/* =========================================================================
+   RESIZE / LAYOUT
+   ========================================================================= */
+function resize() {
+  DPR = Math.min(window.devicePixelRatio || 1, CONFIG.DPR_MAX);
+  const prevW = W, prevH = H;
+  W = canvas.clientWidth; H = canvas.clientHeight;
+  if (W > 0 && H > 0) {
+    canvas.width = Math.round(W * DPR); canvas.height = Math.round(H * DPR);
+    ctx.setTransform(DPR,0,0,DPR,0,0);
+  }
+  BW = brainCanvas.clientWidth; BH = brainCanvas.clientHeight;
+  if (BW > 0 && BH > 0) {
+    brainCanvas.width = Math.round(BW * DPR); brainCanvas.height = Math.round(BH * DPR);
+    bctx.setTransform(DPR,0,0,DPR,0,0);
+  }
+  // keep fly/swatter inside the new bounds instead of resetting their position
+  if (prevW && prevH && W && H) {
+    const sx = W / prevW, sy = H / prevH;
+    if (fly) { fly.x = clamp(fly.x * sx, 30, W-30); fly.y = clamp(fly.y * sy, 30, H-30); }
+    swatter.x = clamp(swatter.x * sx, 20, W-20);
+    swatter.y = clamp(swatter.y * sy, 20, H-20);
+  }
+}
+window.addEventListener('resize', resize);
+window.addEventListener('orientationchange', () => setTimeout(resize, 60));
+
+function clamp(v, a, b){ return Math.max(a, Math.min(b, v)); }
+function flyRadius(){ return (Math.min(W,H) < 520 ? CONFIG.FLY_RADIUS_MOBILE : CONFIG.FLY_RADIUS_DESKTOP); }
+
+function toggleSidebar(){
+  document.getElementById('sidebar').classList.toggle('expanded');
+}
+
+/* =========================================================================
+   INPUT
+   desktop (mouse): absolute — the swatter follows the cursor directly.
+   mobile (touch): relative "trackpad" drag — touchstart never warps the
+   swatter to the finger; only subsequent deltas move it, so the finger
+   never has to sit on top of the swatter or the fly.
+   ========================================================================= */
+const input = {
+  isCoarse: window.matchMedia('(pointer: coarse)').matches,
+  dragging: false,
+  activeTouchId: null,
+  prevTouch: { x:0, y:0 },
+  hintDismissed: false
+};
+
+function pointerPosFromEvent(e){
+  const rect = canvas.getBoundingClientRect();
+  return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+}
+
+function dismissMobileHint(){
+  if (input.hintDismissed) return;
+  input.hintDismissed = true;
+  const hint = document.getElementById('mobileHint');
+  hint.style.opacity = '0';
+  setTimeout(()=>{ hint.style.display='none'; }, 420);
+}
+
+function canAcceptInput(){
+  return gameState === GameState.PLAYING;
+}
+
+// --- mouse (desktop, absolute) ---
+canvas.addEventListener('mousemove', e => {
+  if (!canAcceptInput()) return;
+  const p = pointerPosFromEvent(e);
+  swatter.x = p.x; swatter.y = p.y;
+});
+canvas.addEventListener('mousedown', e => {
+  if (!canAcceptInput()) return;
+  const p = pointerPosFromEvent(e);
+  swatter.x = p.x; swatter.y = p.y;
+});
+canvas.addEventListener('mouseup', () => {
+  if (!canAcceptInput()) return;
+  performStrike();
+});
+
+// --- touch (mobile, relative trackpad) ---
+canvas.addEventListener('touchstart', e => {
+  if (!canAcceptInput()) { return; }
+  e.preventDefault();
+  dismissMobileHint();
+  const t = e.changedTouches[0];
+  input.activeTouchId = t.identifier;
+  const rect = canvas.getBoundingClientRect();
+  input.prevTouch = { x: t.clientX - rect.left, y: t.clientY - rect.top };
+  input.dragging = true;
+  // NOTE: swatter position is intentionally NOT set here — no teleport.
+}, { passive:false });
+
+canvas.addEventListener('touchmove', e => {
+  if (!input.dragging || !canAcceptInput()) return;
+  e.preventDefault();
+  const t = findTouch(e.changedTouches, input.activeTouchId);
+  if (!t) return;
+  const rect = canvas.getBoundingClientRect();
+  const cur = { x: t.clientX - rect.left, y: t.clientY - rect.top };
+  const dx = cur.x - input.prevTouch.x;
+  const dy = cur.y - input.prevTouch.y;
+  swatter.x = clamp(swatter.x + dx, 22, W-22);
+  swatter.y = clamp(swatter.y + dy, 22, H-22);
+  input.prevTouch = cur;
+}, { passive:false });
+
+canvas.addEventListener('touchend', e => {
+  if (!input.dragging) return;
+  e.preventDefault();
+  const t = findTouch(e.changedTouches, input.activeTouchId);
+  input.dragging = false;
+  input.activeTouchId = null;
+  if (!t) return; // stray event for a different touch
+  if (!canAcceptInput()) return;
+  performStrike();
+  if (navigator.vibrate) { try { navigator.vibrate(15); } catch(_) {} }
+}, { passive:false });
+
+canvas.addEventListener('touchcancel', () => {
+  input.dragging = false;
+  input.activeTouchId = null;
+}, { passive:false });
+
+function findTouch(list, id){
+  for (let i=0;i<list.length;i++) if (list[i].identifier === id) return list[i];
+  return null;
+}
+
+/* =========================================================================
+   NEURAL MODEL
+   Not a fixed weighted sum: exponential smoothing, decay, hysteresis on the
+   Giant Fiber threshold, small controlled noise, and a post-escape cooldown
+   so the same approach doesn't instantly re-trigger.
+   ========================================================================= */
+let recoveryUntil = 0;
+
+function updateNeuralModel(dt){
+  if (!fly) return;
+  const dist = Math.hypot(swatter.x - fly.x, swatter.y - fly.y);
+  state.minDist = Math.min(state.minDist, dist);
+
+  let closureSpeed = 0;
+  if (neural.lastDist !== null) closureSpeed = (neural.lastDist - dist) / Math.max(dt, 0.001);
+  neural.lastDist = dist;
+
+  const proximity = clamp(1 - dist / 280, 0, 1);
+  const approach = clamp(closureSpeed / 520, 0, 1.4);
+  const lateral = clamp(Math.abs(swatter.x - fly.x) / 200, 0, 1);
+
+  const noise = () => (Math.random() - 0.5) * CONFIG.NEURAL_NOISE;
+  const rawLPLC2 = clamp(proximity * 115 + noise(), 0, 100);
+  const rawLC4 = clamp(approach * 92 + lateral * proximity * 16 + noise(), 0, 100);
+
+  neural.lplc2 += (rawLPLC2 - neural.lplc2) * CONFIG.NEURAL_SMOOTH;
+  neural.lc4 += (rawLC4 - neural.lc4) * CONFIG.NEURAL_SMOOTH;
+
+  // difficulty ramps slightly with each attempt used
+  const riseThreshold = CONFIG.GF_RISE_THRESHOLD - (state.attempt - 1) * 3;
+
+  let cooldown = 1;
+  if (performance.now() < recoveryUntil) {
+    const remain = (recoveryUntil - performance.now()) / CONFIG.RECOVERY_MS;
+    cooldown = clamp(1 - remain, 0.15, 1);
+  }
+
+  const drive = (neural.lplc2 * 0.46 + neural.lc4 * 0.54) * cooldown;
+  const target = neural.gfLatched ? Math.max(drive, 55) : drive;
+  neural.gf += (target - neural.gf) * 0.18;
+  neural.gf = clamp(neural.gf, 0, 100);
+  state.peakGF = Math.max(state.peakGF, neural.gf);
+
+  // hysteresis: once past rise threshold, stays "latched" until it falls
+  // below the (lower) fall threshold, avoiding flicker around the edge.
+  if (!neural.gfLatched && neural.gf > riseThreshold) neural.gfLatched = true;
+  if (neural.gfLatched && neural.gf < CONFIG.GF_FALL_THRESHOLD) neural.gfLatched = false;
+
+  setBars(neural.lplc2, neural.lc4, neural.gf);
+  updateStatusPill(neural.gf > riseThreshold - 12);
+
+  if (gameState === GameState.PLAYING && neural.gf > riseThreshold) {
+    const reactionMs = 30 + Math.round(Math.random()*40);
+    triggerEscape(reactionMs);
+  }
+}
+
+function setBars(a,b,c){
+  document.getElementById('fillLPLC2').style.width = clamp(a,0,100)+'%';
+  document.getElementById('fillLC4').style.width = clamp(b,0,100)+'%';
+  document.getElementById('fillGF').style.width = clamp(c,0,100)+'%';
+}
+
+function updateStatusPill(ready){
+  const pill = document.getElementById('statusPill');
+  pill.textContent = tr(ready ? 'statusReady' : 'statusSafe');
+  pill.classList.toggle('ready', !!ready);
+}
+
+/* =========================================================================
+   FLY BEHAVIOR
+   ========================================================================= */
+function newFly() {
+  const r = flyRadius();
+  fly = {
+    x: W/2 + (Math.random()-0.5)*60,
+    y: H*CONFIG.FLY_START_Y_RATIO + (Math.random()-0.5)*45,
+    r,
+    jitterPhase: Math.random()*Math.PI*2,
+    dash: null // { fromX, fromY, toX, toY, start, dur }
+  };
+}
+
+function updateFly(dt){
+  if (!fly) return;
+  if (gameState === GameState.ESCAPING && fly.dash) {
+    const t = clamp((performance.now() - fly.dash.start) / fly.dash.dur, 0, 1);
+    const e = 1 - Math.pow(1 - t, 3); // easeOutCubic dash
+    fly.x = fly.dash.fromX + (fly.dash.toX - fly.dash.fromX) * e;
+    fly.y = fly.dash.fromY + (fly.dash.toY - fly.dash.fromY) * e;
+    if (t >= 1) {
+      fly.dash = null;
+      enterRecovering();
+    }
+  }
+}
+
+function computeEscapeTarget(){
+  const margin = CONFIG.ESCAPE_MARGIN;
+  const dx = fly.x - swatter.x, dy = fly.y - swatter.y;
+  let baseAngle = Math.atan2(dy, dx);
+  if (Math.hypot(dx,dy) < 1) baseAngle = Math.random() * Math.PI * 2;
+
+  const [minJ, maxJ] = CONFIG.ESCAPE_JITTER_DEG;
+  for (let attempt=0; attempt<6; attempt++) {
+    const jitterDeg = (minJ + Math.random()*(maxJ-minJ)) * (Math.random() < 0.5 ? -1 : 1);
+    const angle = baseAngle + jitterDeg * Math.PI/180;
+    const dist = CONFIG.ESCAPE_MIN_DIST + Math.random()*(CONFIG.ESCAPE_MAX_DIST-CONFIG.ESCAPE_MIN_DIST);
+    const tx = clamp(fly.x + Math.cos(angle)*dist, margin, W-margin);
+    const ty = clamp(fly.y + Math.sin(angle)*dist, margin, H-margin);
+    // accept if it actually moved a meaningful distance (arena wasn't too small)
+    if (Math.hypot(tx-fly.x, ty-fly.y) > Math.min(W,H) * 0.2 || attempt === 5) {
+      return { x: tx, y: ty };
+    }
+  }
+  return { x: clamp(W-margin,margin,W-margin), y: clamp(margin,margin,H-margin) };
+}
+
+function triggerEscape(reactionMs){
+  gameState = GameState.ESCAPING;
+  state.escapesUsed++;
+  state.escapesTotal++;
+
+  const target = computeEscapeTarget();
+  fly.dash = {
+    fromX: fly.x, fromY: fly.y, toX: target.x, toY: target.y,
+    start: performance.now(),
+    dur: CONFIG.ESCAPE_DURATION_MS[0] + Math.random()*(CONFIG.ESCAPE_DURATION_MS[1]-CONFIG.ESCAPE_DURATION_MS[0])
+  };
+
+  document.getElementById('reactTitle').textContent = tr('saw');
+  document.getElementById('reactSub').textContent = `Reaction: ${reactionMs}ms · Giant Fiber threshold reached`;
+  document.getElementById('reactEscapeCount').textContent = tr('escapeOf', { n: state.escapesUsed, max: CONFIG.MAX_ESCAPES_PER_ATTEMPT });
+  document.getElementById('reactionPopup').style.display = 'block';
+  flash();
+  setTimeout(() => { document.getElementById('reactionPopup').style.display = 'none'; }, Math.min(900, fly.dash.dur + 500));
+}
+
+function enterRecovering(){
+  gameState = GameState.RECOVERING;
+  recoveryUntil = performance.now() + CONFIG.RECOVERY_MS;
+  neural.gfLatched = false;
+  setTimeout(() => {
+    if (gameState !== GameState.RECOVERING) return;
+    if (state.escapesUsed >= CONFIG.MAX_ESCAPES_PER_ATTEMPT) {
+      attemptEnd(false);
+    } else {
+      gameState = GameState.PLAYING;
+    }
+  }, CONFIG.RECOVERY_MS);
+}
+
+function flash() {
+  const f = document.getElementById('flash');
+  f.style.transition = 'none';
+  f.style.opacity = '0.5';
+  requestAnimationFrame(() => {
+    f.style.transition = 'opacity 0.35s ease-out';
+    f.style.opacity = '0';
+  });
+}
+
+/* =========================================================================
+   STRIKE / SCORING
+   ========================================================================= */
+function performStrike(){
+  if (gameState !== GameState.PLAYING || !fly) return;
+  swatter.strikeAnim = 1;
+  const d = Math.hypot(swatter.x - fly.x, swatter.y - fly.y);
+  if (d < fly.r + CONFIG.STRIKE_RADIUS_PAD) {
+    gameState = GameState.CAUGHT;
+    finishGame(true);
+  }
+}
+
+function attemptEnd(success){
+  gameState = GameState.ATTEMPT_END;
+  if (success) { finishGame(true); return; }
+  if (state.attempt >= CONFIG.MAX_ATTEMPTS) {
+    finishGame(false);
+    return;
+  }
+  setTimeout(() => {
+    state.attempt++;
+    document.getElementById('attemptNum').textContent = state.attempt;
+    resetForNextAttempt();
+    gameState = GameState.PLAYING;
+  }, CONFIG.ATTEMPT_END_PAUSE_MS);
+}
+
+function computeFinalScore(elapsedSec){
+  const stealth = Math.max(0, 100 - state.peakGF);
+  const precision = Math.max(0, 100 - Math.max(0, state.minDist - 20) * 0.5);
+  const speedBonus = Math.max(0, 20 - elapsedSec * 2);
+  const escapePenalty = state.escapesTotal * 8;
+  const attemptPenalty = (state.attempt - 1) * 10;
+  return Math.max(1, Math.round(precision*0.4 + stealth*0.35 + speedBonus - escapePenalty - attemptPenalty));
+}
+
+function finishGame(success){
+  gameState = GameState.GAME_OVER;
+  const elapsed = Math.max(0.2, (performance.now() - state.runStart)/1000);
+  const score = success ? computeFinalScore(elapsed) : 0;
+
+  if (score > state.best) {
+    state.best = score;
+    localStorage.setItem('yv_best', state.best);
+    document.getElementById('bestVal').textContent = state.best + ' pts';
+  }
+
+  const demoRank = success ? Math.max(1, Math.round(9000 / Math.max(1, score))) : null;
+  document.getElementById('rankVal').textContent = '—'; // no real backend yet
+
+  submitScore({
+    score, success, escapes: state.escapesTotal, minDist: Math.round(state.minDist),
+    peakGF: Math.round(state.peakGF), elapsed, attempts: state.attempt
+  });
+
+  const leaderboard = success ? `
+    <div id="leaderboard">
+      <h3>${tr('leaderboard')} · ${tr('offline')}</h3>
+      <div class="lb-row"><span>#1 NeuralNinja</span><b>97</b></div>
+      <div class="lb-row"><span>#2 FlyHunter</span><b>94</b></div>
+      <div class="lb-row"><span>#3 SynapseKid</span><b>91</b></div>
+      <div class="lb-row me"><span>#${demoRank} ${tr('you')}</span><b>${score}</b></div>
+    </div>` : '';
+
+  const card = document.getElementById('overlayCard');
+  card.innerHTML = success ? `
+    <h2>🪰 <span class="accent">${tr('caught')}</span></h2>
+    <p>${tr('caughtDesc')}</p>
+    <div id="statLine">
+      🎯 ${tr('score')}: <b>${score}</b><br>
+      🌀 ${tr('escapesCaused')}: <b>${state.escapesTotal}</b><br>
+      📍 ${tr('closestApproach')}: <b>${Math.round(state.minDist)} px</b><br>
+      🧬 ${tr('giantFiberPeak')}: <b>${Math.round(state.peakGF)}%</b><br>
+      ⏱ ${tr('timeLabel')}: <b>${elapsed.toFixed(1)}s</b><br>
+      🥇 ${tr('record')}: <b>${state.best}</b>
+    </div>
+    ${leaderboard}
+    <button class="btn" onclick="startGame()">${tr('again')}</button>
+    <button class="btn secondary" onclick="shareResult(${score}, true)">↗ ${tr('share')}</button>
+    <div id="source-note">${tr('sourceNote')}</div>
+  ` : `
+    <h2>💀 <span class="accent">${tr('brainWon')}</span></h2>
+    <p>${tr('lostDesc')}</p>
+    <div id="statLine">
+      🌀 ${tr('escapesCaused')}: <b>${state.escapesTotal}</b><br>
+      📍 ${tr('closestApproach')}: <b>${Math.round(state.minDist)} px</b><br>
+      🥇 ${tr('record')}: <b>${state.best > 0 ? state.best+' pts' : '—'}</b>
+    </div>
+    <button class="btn" onclick="startGame()">${tr('retry')}</button>
+    <div id="source-note">${tr('sourceNote')}</div>
+  `;
+  document.getElementById('overlay').hidden = false;
+}
+
+function shareResult(score, success) {
+  const templates = {
+    en: success ? `I beat a mapped fly brain. Score: ${score}. Can you beat my rank?` : `I lost to a fly nervous system with 166,691 mapped neurons.`,
+    pt: success ? `Eu venci um cérebro de mosca mapeado. Pontuação: ${score}. Consegue bater meu ranking?` : `Eu perdi para um sistema nervoso de mosca com 166.691 neurônios mapeados.`,
+    zh: success ? `我击败了一个已绘制的果蝇大脑。得分：${score}。你能超过我的排名吗？` : `我输给了一个拥有 166,691 个已绘制神经元的果蝇神经系统。`,
+    es: success ? `Vencí a un cerebro de mosca mapeado. Puntuación: ${score}. ¿Puedes superar mi ranking?` : `Perdí contra un sistema nervioso de mosca con 166.691 neuronas mapeadas.`,
+    ru: success ? `Я победил картированный мозг мухи. Счёт: ${score}. Сможешь обойти мой рейтинг?` : `Я проиграл нервной системе мухи с 166 691 картированными нейронами.`
+  };
+  const shareText = templates[currentLang] || templates.en;
+  if (navigator.share) {
+    navigator.share({ title: 'YOU vs 166,691', text: shareText, url: location.href }).catch(()=>{});
+  } else {
+    navigator.clipboard?.writeText(shareText + ' ' + location.href);
+    alert(tr('copied'));
+  }
+}
+
+/* =========================================================================
+   LEADERBOARD (no fake backend — clean async interface for later)
+   ========================================================================= */
+const LEADERBOARD_MODE = 'local'; // 'local' | 'supabase'
+// TODO: connect Supabase leaderboard here
+async function submitScore(scoreData) {
+  if (LEADERBOARD_MODE !== 'supabase') return null;
+  // const { data, error } = await supabaseClient.from('scores').insert(scoreData);
+  return null;
+}
+async function fetchLeaderboard() {
+  if (LEADERBOARD_MODE !== 'supabase') return [];
+  // const { data, error } = await supabaseClient.from('scores').select('*').order('score', { ascending:false }).limit(10);
+  return [];
+}
+
+/* =========================================================================
+   ROUND / GAME LIFECYCLE
+   ========================================================================= */
+function resetForNextAttempt(){
+  state.escapesUsed = 0;
+  neural.lplc2 = 0; neural.lc4 = 0; neural.gf = 0; neural.gfLatched = false; neural.lastDist = null;
+  recoveryUntil = 0;
+  newFly();
+  swatter.x = W*0.5; swatter.y = H*CONFIG.SWATTER_START_Y_RATIO;
+  setBars(0,0,0);
+  updateStatusPill(false);
+}
+
+function startGame() {
+  document.getElementById('overlay').hidden = true;
+  resize();
+  state.attempt = 1;
+  state.escapesUsed = 0;
+  state.escapesTotal = 0;
+  state.minDist = Infinity;
+  state.peakGF = 0;
+  state.runStart = performance.now();
+  document.getElementById('attemptNum').textContent = state.attempt;
+  resetForNextAttempt();
+  gameState = GameState.PLAYING;
+}
+
+/* =========================================================================
+   RENDERING — game (fly + swatter)
+   ========================================================================= */
+function renderGame(dt) {
+  if (!W || !H) return;
+  ctx.clearRect(0,0,W,H);
+
+  // faint neural grid backdrop
+  ctx.fillStyle = 'rgba(124,77,255,0.03)';
+  for (let i=0;i<W;i+=28) ctx.fillRect(i,0,1,H);
+  for (let j=0;j<H;j+=28) ctx.fillRect(0,j,W,1);
+
+  renderSwatter(dt);
+  renderFly();
+}
+
+function renderSwatter(dt){
+  const targetVX = 0; // velocity is derived from position deltas each frame below
+  swatter.tilt = clamp(swatter.tilt * 0.85 + (swatter.vx * 0.0025), -0.5, 0.5);
+  swatter.strikeAnim = Math.max(0, swatter.strikeAnim - dt*3.2);
+
+  const punch = swatter.strikeAnim; // 0..1
+  const headOffset = punch * 10;
+  const scale = 1 + punch * 0.18;
+
+  ctx.save();
+  ctx.translate(swatter.x, swatter.y);
+  ctx.rotate(-0.18 + swatter.tilt);
+  ctx.translate(0, -headOffset);
+  ctx.scale(scale, scale);
+
+  // handle
+  ctx.strokeStyle = 'rgba(230,220,255,.85)';
+  ctx.lineWidth = 4;
+  ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(0,20); ctx.lineTo(0,60); ctx.stroke();
+  // handle grip
+  ctx.strokeStyle = 'rgba(124,77,255,.7)';
+  ctx.lineWidth = 6;
+  ctx.beginPath(); ctx.moveTo(0,46); ctx.lineTo(0,60); ctx.stroke();
+
+  // mesh head
+  ctx.fillStyle = `rgba(255,110,199,${0.08 + punch*0.18})`;
+  ctx.strokeStyle = '#ff6ec7';
+  ctx.lineWidth = 2.2;
+  ctx.beginPath(); ctx.ellipse(0,0,26,21,0,0,Math.PI*2); ctx.fill(); ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,110,199,.5)';
+  ctx.lineWidth = 1;
+  for(let x=-16;x<=16;x+=6.5){ ctx.beginPath(); ctx.moveTo(x,-15); ctx.lineTo(x,15); ctx.stroke(); }
+  for(let y=-11;y<=11;y+=6.5){ ctx.beginPath(); ctx.moveTo(-19,y); ctx.lineTo(19,y); ctx.stroke(); }
+  ctx.restore();
+}
+
+function renderFly() {
+  if (!fly) return;
+
+  const isDashing = gameState === GameState.ESCAPING && fly.dash;
+  const jit = isDashing ? 0 : Math.sin(Date.now()*0.006 + fly.jitterPhase) * 4;
+  const driftX = isDashing ? 0 : Math.sin(Date.now()*0.0018 + fly.jitterPhase) * 9;
+  const driftY = isDashing ? 0 : Math.cos(Date.now()*0.0015 + fly.jitterPhase*1.7) * 6;
+  const wingSpeed = isDashing ? 0.05 : 0.11;
+  const r = fly.r;
+
+  ctx.save();
+  ctx.translate(fly.x + driftX, fly.y + jit + driftY);
+
+  // short motion trail while dashing away
+  if (isDashing) {
+    const back = { x: fly.dash.fromX - fly.x, y: fly.dash.fromY - fly.y };
+    const len = Math.hypot(back.x, back.y);
+    if (len > 2) {
+      const nx = back.x/len, ny = back.y/len;
+      const grad = ctx.createLinearGradient(0,0, nx*40, ny*40);
+      grad.addColorStop(0,'rgba(255,230,120,.35)');
+      grad.addColorStop(1,'rgba(255,230,120,0)');
+      ctx.strokeStyle = grad;
+      ctx.lineWidth = r*0.9;
+      ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(nx*40, ny*40); ctx.stroke();
+    }
+  }
+
+  // soft glow so the fly never disappears into the background
+  const glow = ctx.createRadialGradient(0,0,2,0,0,r*1.3);
+  glow.addColorStop(0,'rgba(255,230,120,.30)');
+  glow.addColorStop(1,'rgba(255,230,120,0)');
+  ctx.fillStyle = glow;
+  ctx.beginPath(); ctx.arc(0,0,r*1.3,0,Math.PI*2); ctx.fill();
+
+  if (assets.fly.ready) {
+    const s = r * 2.6;
+    ctx.drawImage(assets.fly.img, -s/2, -s/2, s, s);
+  } else {
+    const k = r / 24; // scale the vector fallback to the target radius
+    ctx.scale(k, k);
+
+    // legs
+    ctx.strokeStyle = '#cfc7ff';
+    ctx.lineWidth = 2;
+    [[-7,-4,-22,-14],[-7,0,-24,0],[-7,5,-22,15],[5,-4,22,-14],[5,0,24,0],[5,5,22,15]].forEach(p=>{
+      ctx.beginPath(); ctx.moveTo(p[0],p[1]); ctx.lineTo(p[2],p[3]); ctx.stroke();
+    });
+
+    // wings (vibrate faster while escaping)
+    const wingFlap = Math.sin(Date.now()*wingSpeed) * 0.12;
+    ctx.fillStyle = 'rgba(190,230,255,.78)';
+    ctx.strokeStyle = 'rgba(255,255,255,.65)';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath(); ctx.ellipse(-8,-13,17,7,-0.45+wingFlap,0,Math.PI*2); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(-8,13,17,7,0.45-wingFlap,0,Math.PI*2); ctx.fill(); ctx.stroke();
+
+    // thorax / abdomen
+    ctx.fillStyle = '#1d172b';
+    ctx.strokeStyle = '#f4e9ff';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.ellipse(0,0,22,15,0,0,Math.PI*2); ctx.fill(); ctx.stroke();
+
+    ctx.fillStyle = '#44345f';
+    ctx.beginPath(); ctx.ellipse(-8,0,9,10,0,0,Math.PI*2); ctx.fill();
+
+    // head + eyes
+    ctx.fillStyle = '#2e243f';
+    ctx.beginPath(); ctx.arc(13,0,8,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#ff365f';
+    ctx.beginPath(); ctx.arc(16,-4,3.2,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(16,4,3.2,0,Math.PI*2); ctx.fill();
+  }
+
+  ctx.restore();
+}
+
+/* =========================================================================
+   RENDERING — brain (LIVE FLY BRAIN panel)
+   This is a schematic activity view tied to the game's neural variables,
+   not a simulation of the full MaleCNS graph.
+   ========================================================================= */
+const brainNodes = [];
+const brainEdges = [];
+(function buildBrain(){
+  const cols = 9, rows = 5;
+  for(let r=0;r<rows;r++){
+    for(let c=0;c<cols;c++){
+      const idx = r*cols+c;
+      brainNodes.push({
+        x:(c+0.65)/cols,
+        y:(r+0.85)/(rows+0.8),
+        group: c < 3 ? 'visual' : (c < 7 ? 'decision' : 'escape'),
+        phase: Math.random()*Math.PI*2
+      });
+      if(c>0){ const prev = idx-1; if(Math.random()>.08) brainEdges.push([prev, idx]); }
+      if(r>0 && Math.random()>.45){ brainEdges.push([idx-cols, idx]); }
+      if(r<rows-1 && c>1 && Math.random()>.7){ brainEdges.push([idx, idx+cols-1]); }
+    }
+  }
+})();
+
+function renderBrain(){
+  if(!BW || !BH) return;
+  bctx.clearRect(0,0,BW,BH);
+
+  const lplc2 = neural.lplc2, lc4 = neural.lc4, gf = neural.gf;
+
+  // organic silhouette fallback (also visible faintly under the connectome image)
+  bctx.save();
+  bctx.translate(BW*0.5,BH*0.53);
+  bctx.scale(BW*0.40,BH*0.34);
+  bctx.fillStyle='rgba(124,77,255,.05)';
+  bctx.strokeStyle='rgba(124,77,255,.22)';
+  bctx.lineWidth=1/Math.max(BW*.40,1);
+  bctx.beginPath();
+  bctx.moveTo(-1,0);
+  bctx.bezierCurveTo(-.98,-.82,-.42,-1.05,0,-.88);
+  bctx.bezierCurveTo(.48,-1.08,1.00,-.72,1,0);
+  bctx.bezierCurveTo(.98,.72,.45,1.00,0,.84);
+  bctx.bezierCurveTo(-.45,1.03,-.98,.74,-1,0);
+  bctx.closePath();
+  bctx.fill(); bctx.stroke();
+  bctx.restore();
+
+  for(const [a,b] of brainEdges){
+    const na=brainNodes[a], nb=brainNodes[b];
+    const ax=na.x*BW, ay=na.y*BH, bx=nb.x*BW, by=nb.y*BH;
+    let act=0;
+    if(nb.group==='visual') act=Math.max(lplc2,lc4)/100;
+    else if(nb.group==='decision') act=(lplc2*.45+lc4*.55)/100;
+    else act=gf/100;
+
+    const pulse=(Math.sin(performance.now()/170 + a*.8)+1)/2;
+    const alpha=.18 + act*.42 + pulse*(.04 + act*.16);
+    bctx.strokeStyle=`rgba(${nb.group==='escape'?'255,120,90':'130,110,255'},${alpha})`;
+    bctx.lineWidth=1 + act*1.2;
+    bctx.beginPath(); bctx.moveTo(ax,ay); bctx.lineTo(bx,by); bctx.stroke();
+  }
+
+  brainNodes.forEach((n)=>{
+    let act=0;
+    if(n.group==='visual') act=Math.max(lplc2,lc4)/100;
+    else if(n.group==='decision') act=(lplc2*.45+lc4*.55)/100;
+    else act=gf/100;
+
+    const pulse=(Math.sin(performance.now()/130 + n.phase)+1)/2;
+    const r=2.8 + act*3.8 + pulse*(0.45 + act*1.8);
+    const x=n.x*BW, y=n.y*BH;
+    const grad=bctx.createRadialGradient(x,y,0,x,y,r*3);
+    if(n.group==='visual'){ grad.addColorStop(0,`rgba(0,229,255,${.45+act*.55})`); grad.addColorStop(1,'rgba(0,229,255,0)'); }
+    else if(n.group==='decision'){ grad.addColorStop(0,`rgba(150,110,255,${.42+act*.58})`); grad.addColorStop(1,'rgba(150,110,255,0)'); }
+    else { grad.addColorStop(0,`rgba(255,95,80,${.42+act*.58})`); grad.addColorStop(1,'rgba(255,95,80,0)'); }
+    bctx.fillStyle=grad;
+    bctx.beginPath(); bctx.arc(x,y,r*3,0,Math.PI*2); bctx.fill();
+
+    bctx.fillStyle = n.group==='escape' ? '#ff8a72' : (n.group==='visual' ? '#66f4ff' : '#bca8ff');
+    bctx.beginPath(); bctx.arc(x,y,Math.max(1.4,r*.44),0,Math.PI*2); bctx.fill();
+  });
+
+  bctx.font='10px system-ui';
+  bctx.fillStyle='rgba(190,230,255,.8)';
+  bctx.fillText('LPLC2 / LC4', 10, BH*0.5);
+  bctx.fillStyle='rgba(190,170,255,.8)';
+  bctx.fillText('INTEGRATION', BW*.40, BH*0.5);
+  bctx.fillStyle='rgba(255,150,120,.9)';
+  bctx.fillText('GIANT FIBER', BW*.75, BH*0.5);
+
+  if (gameState === GameState.ESCAPING || gf > CONFIG.GF_RISE_THRESHOLD - 4) {
+    bctx.font='700 13px system-ui';
+    bctx.fillStyle='#ffcc4d';
+    bctx.fillText('⚡ ESCAPE SIGNAL', BW*.5 - 46, BH*.16);
+  }
+}
+
+/* =========================================================================
+   GAME LOOP
+   ========================================================================= */
+let lastT = performance.now();
+let lastSwatterX = 0, lastSwatterY = 0;
+
+function frame(t) {
+  const dt = Math.max(0.001, Math.min(0.05, (t - lastT)/1000));
+  lastT = t;
+
+  if (!W || !H) resize(); // guard against a 0-size canvas on the very first frame
+
+  swatter.vx = (swatter.x - lastSwatterX) / dt;
+  swatter.vy = (swatter.y - lastSwatterY) / dt;
+  lastSwatterX = swatter.x; lastSwatterY = swatter.y;
+
+  if (gameState === GameState.PLAYING) updateNeuralModel(dt);
+  updateFly(dt);
+
+  renderGame(dt);
+  renderBrain();
+
+  requestAnimationFrame(frame);
+}
+
+/* =========================================================================
+   INIT
+   ========================================================================= */
+applyLanguage();
+resize();
+newFly();
+swatter.x = W * 0.5;
+swatter.y = H * CONFIG.SWATTER_START_Y_RATIO;
+lastSwatterX = swatter.x; lastSwatterY = swatter.y;
+setBars(0,0,0);
+updateStatusPill(false);
+renderGame(0.016);
+renderBrain();
+
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
