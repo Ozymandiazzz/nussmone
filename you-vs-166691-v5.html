@@ -312,8 +312,8 @@ const CONFIG = {
   FLY_RADIUS_MOBILE: 30,
   SWATTER_START_Y_RATIO: 0.78,
   FLY_START_Y_RATIO: 0.30,
-  ESCAPE_MIN_DIST: 250,
-  ESCAPE_MAX_DIST: 450,
+  ESCAPE_MIN_DIST: 280,
+  ESCAPE_MAX_DIST: 480,
   ESCAPE_JITTER_DEG: [20, 35],
   ESCAPE_DURATION_MS: [180, 280],
   ESCAPE_MARGIN: 40,
@@ -321,10 +321,30 @@ const CONFIG = {
   ATTEMPT_END_PAUSE_MS: 900,
   NEURAL_SMOOTH: 0.22,
   NEURAL_NOISE: 3,
-  GF_RISE_THRESHOLD: 80,
+  GF_RISE_THRESHOLD: 77,
   GF_FALL_THRESHOLD: 46,
-  DPR_MAX: 2
+  DPR_MAX: 2,
+  // strike wind-up: the swing takes real time, and the neural model keeps
+  // running during it — a rushed swing can still let the fly escape.
+  STRIKE_DURATION_MS: 105,
+  STRIKE_IMPACT_AT: 0.75,       // fraction of the swing where impact is tested
+  STRIKE_ADVANCE_PX: 30         // how far the racket head travels during the swing
 };
+
+// Temporary balancing aid — set true to see live neural/threat numbers on screen.
+const DEBUG_NEURAL = false;
+let debugEl = null;
+function renderDebugPanel(d){
+  if (!debugEl) {
+    debugEl = document.createElement('div');
+    debugEl.style.cssText = 'position:absolute;left:6px;top:6px;z-index:40;font:10px/1.4 monospace;color:#7CFF9A;background:rgba(0,0,0,.55);padding:6px 8px;border-radius:6px;pointer-events:none;white-space:pre;';
+    document.getElementById('arena').appendChild(debugEl);
+  }
+  debugEl.textContent =
+    `dist ${d.dist.toFixed(0)}  closure ${d.closureSpeed.toFixed(0)}  ttc ${isFinite(d.ttc)?d.ttc.toFixed(2):'inf'}\n` +
+    `lplc2 ${d.lplc2.toFixed(0)}  lc4 ${d.lc4.toFixed(0)}  instant ${d.instant.toFixed(0)}  gf ${d.gf.toFixed(0)}\n` +
+    `state ${d.state}`;
+}
 
 /* =========================================================================
    I18N
@@ -471,6 +491,7 @@ langSelect.addEventListener('change', e=>{
 const GameState = {
   IDLE: 'IDLE',
   PLAYING: 'PLAYING',
+  STRIKING: 'STRIKING',
   ESCAPING: 'ESCAPING',
   RECOVERING: 'RECOVERING',
   CAUGHT: 'CAUGHT',
@@ -489,10 +510,12 @@ const state = {
   best: Number(localStorage.getItem('yv_best') || 0)
 };
 
-const neural = { lplc2: 0, lc4: 0, gf: 0, gfLatched: false, lastDist: null };
+const neural = { lplc2: 0, lc4: 0, gf: 0, instant: 0, gfLatched: false, lastDist: null };
 
 let fly = null;
-const swatter = { x:0, y:0, vx:0, vy:0, tilt:0, strikeAnim:0 };
+const swatter = { x:0, y:0, vx:0, vy:0, tilt:0 };
+// active strike wind-up: null when idle, otherwise { startTime, duration, impactChecked, dirX, dirY, originX, originY }
+let strike = null;
 
 let W = 0, H = 0, DPR = 1, BW = 0, BH = 0;
 const canvas = document.getElementById('game');
@@ -670,6 +693,26 @@ function updateNeuralModel(dt){
   neural.lplc2 += (rawLPLC2 - neural.lplc2) * CONFIG.NEURAL_SMOOTH;
   neural.lc4 += (rawLC4 - neural.lc4) * CONFIG.NEURAL_SMOOTH;
 
+  // Fast looming / time-to-contact channel. LPLC2/LC4 above are deliberately
+  // smoothed over several frames — a mouse that jumps straight onto the fly
+  // and clicks would otherwise land before that smoothing ever caught up.
+  // This channel reacts within a frame or two of a close, fast approach.
+  // Require real closing speed (not just "still drifting") before time-to-
+  // contact even applies — otherwise ttc trivially shrinks near the fly
+  // even for a slow, deliberate approach, since ttc = distance / speed.
+  const ttc = closureSpeed > 150 ? dist / closureSpeed : Infinity;
+  let instantThreatRaw = 0;
+  if (ttc < 0.18) instantThreatRaw += 40;
+  if (ttc < 0.09) instantThreatRaw += 30;
+  if (dist < 26) instantThreatRaw += 10; // small point-blank kicker, not enough alone to cross threshold
+  instantThreatRaw = clamp(instantThreatRaw + noise()*1.5, 0, 100);
+  // fast attack / slow decay envelope: a single-frame closing-speed spike
+  // (a quick flick of the mouse straight at the fly) needs to punch through
+  // immediately and then hold for a few frames — a plain EMA would let it
+  // collapse back down the very next frame once the mouse stops moving.
+  if (instantThreatRaw > neural.instant) neural.instant += (instantThreatRaw - neural.instant) * 0.9;
+  else neural.instant += (instantThreatRaw - neural.instant) * 0.12;
+
   // difficulty ramps slightly with each attempt used
   const riseThreshold = CONFIG.GF_RISE_THRESHOLD - (state.attempt - 1) * 3;
 
@@ -679,9 +722,15 @@ function updateNeuralModel(dt){
     cooldown = clamp(1 - remain, 0.15, 1);
   }
 
-  const drive = (neural.lplc2 * 0.46 + neural.lc4 * 0.54) * cooldown;
+  const drive = clamp(neural.lplc2 * 0.20 + neural.lc4 * 0.22 + neural.instant * 0.62, 0, 100) * cooldown;
   const target = neural.gfLatched ? Math.max(drive, 55) : drive;
-  neural.gf += (target - neural.gf) * 0.18;
+  // Giant Fiber itself gets a fast-attack / slow-release envelope: a brief
+  // spike (the final instant before contact) needs to cross the threshold
+  // within the same couple of frames, and then hold — not collapse the
+  // moment the racket stops moving right as it reaches the fly, which is
+  // exactly the highest-risk instant of the whole approach.
+  if (target > neural.gf) neural.gf += (target - neural.gf) * 0.75;
+  else neural.gf += (target - neural.gf) * 0.10;
   neural.gf = clamp(neural.gf, 0, 100);
   state.peakGF = Math.max(state.peakGF, neural.gf);
 
@@ -692,8 +741,17 @@ function updateNeuralModel(dt){
 
   setBars(neural.lplc2, neural.lc4, neural.gf);
   updateStatusPill(neural.gf > riseThreshold - 12);
+  if (DEBUG_NEURAL) renderDebugPanel({ dist, closureSpeed, ttc, lplc2: neural.lplc2, lc4: neural.lc4, instant: neural.instant, gf: neural.gf, state: gameState });
 
-  if (gameState === GameState.PLAYING && neural.gf > riseThreshold) {
+  // Two escape paths: the slow-integrated Giant Fiber threshold above, and a
+  // direct reflex path off the raw looming channel. The reflex path exists
+  // because a single-frame "mouse arrives on the fly at full speed" event
+  // only lives for one frame before the racket stops moving — by the time
+  // it has propagated through GF's own smoothing the moment has already
+  // passed. This is what actually stops the "teleport onto the fly and
+  // click" exploit the fix was written for.
+  const reflexTrigger = neural.instant > (riseThreshold - 3);
+  if ((gameState === GameState.PLAYING || gameState === GameState.STRIKING) && (neural.gf > riseThreshold || reflexTrigger)) {
     const reactionMs = 30 + Math.round(Math.random()*40);
     triggerEscape(reactionMs);
   }
@@ -761,6 +819,7 @@ function computeEscapeTarget(){
 }
 
 function triggerEscape(reactionMs){
+  strike = null; // any in-flight swing is cancelled — the fly wins the race
   gameState = GameState.ESCAPING;
   state.escapesUsed++;
   state.escapesTotal++;
@@ -807,13 +866,65 @@ function flash() {
 /* =========================================================================
    STRIKE / SCORING
    ========================================================================= */
+// Starts the swing — does NOT resolve the hit. Collision is only tested at
+// the impact frame inside updateStrike(), after the neural model has had a
+// full wind-up window to react. See STRIKING in the state diagram above.
 function performStrike(){
-  if (gameState !== GameState.PLAYING || !fly) return;
-  swatter.strikeAnim = 1;
-  const d = Math.hypot(swatter.x - fly.x, swatter.y - fly.y);
-  if (d < fly.r + CONFIG.STRIKE_RADIUS_PAD) {
-    gameState = GameState.CAUGHT;
-    finishGame(true);
+  if (gameState !== GameState.PLAYING || !fly || strike) return;
+  let dirX = fly.x - swatter.x, dirY = fly.y - swatter.y;
+  const len = Math.hypot(dirX, dirY);
+  if (len < 1) { dirX = 0; dirY = -1; } else { dirX /= len; dirY /= len; }
+  strike = {
+    startTime: performance.now(),
+    duration: CONFIG.STRIKE_DURATION_MS,
+    impactChecked: false,
+    dirX, dirY,
+    originX: swatter.x, originY: swatter.y
+  };
+  gameState = GameState.STRIKING;
+}
+
+// 0 -> 1 progress through the swing: minimal wind-up, then a fast advance,
+// then a short impact/recoil settle. Shared by the impact test and the render.
+function strikeAdvanceRatio(t){
+  if (t < 0.4) return 0.08 * (t / 0.4);
+  if (t < 0.8) return 0.08 + 0.82 * ((t - 0.4) / 0.4);
+  const local = (t - 0.8) / 0.2;
+  return 0.90 + 0.10 * Math.sin(local * Math.PI);
+}
+
+function strikeHeadCenter(progress){
+  if (!strike) return { x: swatter.x, y: swatter.y };
+  const advance = CONFIG.STRIKE_ADVANCE_PX * strikeAdvanceRatio(progress);
+  return { x: strike.originX + strike.dirX * advance, y: strike.originY + strike.dirY * advance };
+}
+
+function updateStrike(){
+  if (!strike) return;
+  const elapsed = performance.now() - strike.startTime;
+  const progress = clamp(elapsed / strike.duration, 0, 1);
+
+  // The neural model (updateNeuralModel, called every STRIKING frame from
+  // the game loop) can still fire triggerEscape() while we're mid-swing —
+  // that sets strike = null and moves gameState to ESCAPING, which is why
+  // every check below re-verifies `strike` is still the active swing.
+  if (strike && !strike.impactChecked && progress >= CONFIG.STRIKE_IMPACT_AT) {
+    strike.impactChecked = true;
+    if (fly) {
+      const head = strikeHeadCenter(progress);
+      const d = Math.hypot(head.x - fly.x, head.y - fly.y);
+      if (d < fly.r + CONFIG.STRIKE_RADIUS_PAD) {
+        gameState = GameState.CAUGHT;
+        strike = null;
+        finishGame(true);
+        return;
+      }
+    }
+  }
+
+  if (strike && progress >= 1) {
+    strike = null;
+    if (gameState === GameState.STRIKING) gameState = GameState.PLAYING;
   }
 }
 
@@ -937,8 +1048,9 @@ async function fetchLeaderboard() {
    ========================================================================= */
 function resetForNextAttempt(){
   state.escapesUsed = 0;
-  neural.lplc2 = 0; neural.lc4 = 0; neural.gf = 0; neural.gfLatched = false; neural.lastDist = null;
+  neural.lplc2 = 0; neural.lc4 = 0; neural.gf = 0; neural.instant = 0; neural.gfLatched = false; neural.lastDist = null;
   recoveryUntil = 0;
+  strike = null;
   newFly();
   swatter.x = W*0.5; swatter.y = H*CONFIG.SWATTER_START_Y_RATIO;
   setBars(0,0,0);
@@ -976,18 +1088,22 @@ function renderGame(dt) {
 }
 
 function renderSwatter(dt){
-  const targetVX = 0; // velocity is derived from position deltas each frame below
   swatter.tilt = clamp(swatter.tilt * 0.85 + (swatter.vx * 0.0025), -0.5, 0.5);
-  swatter.strikeAnim = Math.max(0, swatter.strikeAnim - dt*3.2);
 
-  const punch = swatter.strikeAnim; // 0..1
-  const headOffset = punch * 10;
+  // world-space head advance driven by the actual strike wind-up, not a
+  // fixed decay — this is what strikeHeadCenter() uses for the hit test too.
+  let worldX = swatter.x, worldY = swatter.y, punch = 0;
+  if (strike) {
+    const progress = clamp((performance.now() - strike.startTime) / strike.duration, 0, 1);
+    const head = strikeHeadCenter(progress);
+    worldX = head.x; worldY = head.y;
+    punch = strikeAdvanceRatio(progress);
+  }
   const scale = 1 + punch * 0.18;
 
   ctx.save();
-  ctx.translate(swatter.x, swatter.y);
+  ctx.translate(worldX, worldY);
   ctx.rotate(-0.18 + swatter.tilt);
-  ctx.translate(0, -headOffset);
   ctx.scale(scale, scale);
 
   // handle
@@ -1204,7 +1320,8 @@ function frame(t) {
   swatter.vy = (swatter.y - lastSwatterY) / dt;
   lastSwatterX = swatter.x; lastSwatterY = swatter.y;
 
-  if (gameState === GameState.PLAYING) updateNeuralModel(dt);
+  if (gameState === GameState.PLAYING || gameState === GameState.STRIKING) updateNeuralModel(dt);
+  updateStrike();
   updateFly(dt);
 
   renderGame(dt);
