@@ -335,7 +335,7 @@ const CONFIG = {
   DWELL_MS: 190,                // time inside that ring before escape is near-certain
   // the fly's own reaction latency between the circuit firing and the dash —
   // this is the window a well-timed strike can still beat.
-  REACTION_MS: [18, 48],
+  REACTION_MS: [26, 56],
   MICRO_HOP_PX: [10, 25],
   MICRO_HOP_COOLDOWN_MS: 900,
   MICRO_HOP_DURATION_MS: 130
@@ -760,7 +760,7 @@ function updateNeuralModel(dt){
   // decays while backing off, so closing distance is a resource, not a state.
   if (dist < 50) neural.nearExposure += dt * 150;
   else if (dist < 75) neural.nearExposure += dt * 95;
-  else if (dist < 110) neural.nearExposure += dt * 85;
+  else if (dist < 110) neural.nearExposure += dt * 62;
   else if (dist < 130) neural.nearExposure += dt * 25;
   else neural.nearExposure -= dt * 50;
   neural.nearExposure = clamp(neural.nearExposure, 0, 100);
