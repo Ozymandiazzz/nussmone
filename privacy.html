@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Privacy — YOU vs 166,691</title>
+<meta name="robots" content="index, follow">
+<style>
+  :root { color-scheme: dark; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    background:#050212; color:#e7e0ff;
+    font-family:-apple-system,'Segoe UI',system-ui,sans-serif;
+    line-height:1.65; padding:40px 20px 60px;
+  }
+  main { max-width:680px; margin:0 auto; }
+  h1 {
+    font-size:26px; margin-bottom:6px;
+    background:linear-gradient(90deg,#ff6ec7,#7c4dff,#00e5ff);
+    -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+  }
+  .updated { font-size:12px; color:#6b6192; margin-bottom:28px; }
+  h2 { font-size:15px; margin:26px 0 8px; color:#fff; letter-spacing:.02em; }
+  p, li { font-size:14px; color:#c9c0ff; }
+  ul { margin:8px 0 0 20px; }
+  li { margin-bottom:6px; }
+  a { color:#00e5ff; }
+  code { background:rgba(124,77,255,.14); padding:1px 5px; border-radius:4px; font-size:13px; }
+  .back { display:inline-block; margin-top:34px; font-size:13px; }
+  footer { margin-top:40px; font-size:11px; color:#5f5680; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Privacy</h1>
+  <p class="updated">YOU vs 166,691 — last updated 2026-09-11</p>
+
+  <p>This is a small browser game. It does not ask for an account, an email address,
+  a phone number or a password, and it is not used to build a profile about you
+  beyond what is described on this page.</p>
+
+  <h2>What is public</h2>
+  <ul>
+    <li><strong>Your nickname.</strong> You choose it yourself and it is shown to
+    everyone on the global leaderboard.</li>
+    <li><strong>Your scores.</strong> Each finished game is stored with its score
+    and a few gameplay statistics (escapes caused, closest approach, Giant Fiber
+    peak, elapsed time, attempts used). Your best score is shown publicly next to
+    your nickname.</li>
+  </ul>
+  <p>Please do not use a nickname that identifies you or anyone else if you would
+  rather stay anonymous.</p>
+
+  <h2>Account identifier</h2>
+  <p>To keep your scores attached to you between visits, the game signs you in
+  <strong>anonymously</strong> through <a href="https://supabase.com" target="_blank" rel="noopener">Supabase</a>.
+  Supabase issues a random account id for your browser and stores a session token
+  in this browser. That id is not linked to an email address, a phone number or
+  any real-world identity, and we do not connect it to anything else.</p>
+
+  <h2>Stored in your browser</h2>
+  <p>The game keeps a few small values in this browser's <code>localStorage</code>:
+  your chosen language, your local best score, the number of games you have
+  finished, and the Supabase session token described above. Clearing your browser
+  data removes them; you will then get a new anonymous id, and your old scores
+  stay on the leaderboard under your old nickname.</p>
+
+  <h2>Hosting and network</h2>
+  <p>Loading the page involves the static host that serves it and, if the
+  leaderboard is enabled, requests to Supabase. Those services process the usual
+  technical data any web request produces, such as an IP address, in order to
+  deliver the response and protect against abuse.</p>
+
+  <h2>Advertising</h2>
+  <p>Ads are currently <strong>not enabled</strong>. If advertising is enabled in a
+  future version, it will use Google's H5 Games Ad Placement API, and Google may
+  use cookies or similar technologies to serve and measure ads. You can review
+  Google's practices at
+  <a href="https://policies.google.com/technologies/partner-sites" target="_blank" rel="noopener">policies.google.com/technologies/partner-sites</a>.
+  This page will be updated when that happens.</p>
+
+  <h2>Analytics</h2>
+  <p>No third-party analytics product is loaded. The game contains internal event
+  hooks (for example "game started" or "score submitted") that currently do
+  nothing beyond optional local debug output.</p>
+
+  <h2>Removing your data</h2>
+  <p>If you want your nickname and scores deleted, contact the site owner with
+  your nickname and it will be removed.</p>
+
+  <h2>Children</h2>
+  <p>The game is not directed at children under 13 and does not knowingly collect
+  personal information from them.</p>
+
+  <a class="back" href="./">← Back to the game</a>
+
+  <footer>
+    Escape-circuit activity in the game is a simplified computational model based
+    on published connectome research. It is not a biological fly.
+  </footer>
+</main>
+</body>
+</html>

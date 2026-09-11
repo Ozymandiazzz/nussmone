@@ -5,11 +5,28 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>YOU vs 166,691 — Beat the Fly Brain</title>
 
-<!-- Open Graph / share preview — swap the image when a real card is generated -->
-<meta property="og:title" content="YOU vs 166,691 — Can you beat a real mapped fly brain?">
-<meta property="og:description" content="Scientists mapped 166,691 neurons in a fruit fly nervous system. Catch the fly before its escape circuit fires.">
+<!-- ============================================================
+     SOCIAL PREVIEW
+     Crawlers read these from the static HTML and do NOT run our JS, so the
+     two absolute URLs below must be edited by hand once the domain is live.
+     REPLACE https://REPLACE-WITH-YOUR-DOMAIN with your real origin.
+     ============================================================ -->
+<meta property="og:title" content="YOU vs 166,691">
+<meta property="og:description" content="Scientists mapped 166,691 neurons in a fruit fly nervous system. Can you beat its escape circuit?">
 <meta property="og:type" content="website">
+<meta property="og:url" content="https://REPLACE-WITH-YOUR-DOMAIN/">
+<meta property="og:image" content="https://REPLACE-WITH-YOUR-DOMAIN/assets/og-image.png">
 <meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="YOU vs 166,691">
+<meta name="twitter:description" content="Scientists mapped 166,691 neurons in a fruit fly nervous system. Can you beat its escape circuit?">
+<meta name="twitter:image" content="https://REPLACE-WITH-YOUR-DOMAIN/assets/og-image.png">
+<!-- canonical is also rewritten at runtime from location.origin, so a custom
+     domain works without touching this line -->
+<link rel="canonical" id="canonicalLink" href="/">
+
+<!-- Supabase JS v2. Deferred so it never blocks first paint; the game boots
+     and plays fine if this fails to load (leaderboard just reports offline). -->
+<script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
 <style>
   :root{
@@ -47,13 +64,16 @@
 
   /* ---------- top bar (rank/best/attempt) always outside the arena ---------- */
   #topbar {
+    position: relative;
     display: flex;
     justify-content: space-between;
     align-items: center;
     padding: 8px 14px 6px;
     font-size: 12px;
     color: #9d90d8;
-    z-index: 15;
+    /* above #overlay (30) so Leaderboard and the profile chip stay clickable
+       on the start and game-over screens, which is where they are used */
+    z-index: 35;
     gap: 8px;
     flex-wrap: wrap;
   }
@@ -214,8 +234,82 @@
   .lb-row { display:flex; justify-content:space-between; gap:10px; padding:3px 0; color:#c9c0ff; }
   .lb-row.me { color:#00e5ff; font-weight:700; }
 
-  /* slot reserved for a future H5 Games interstitial between rounds */
+  /* slot reserved for a real H5 Games interstitial between rounds */
   #adSlotInterstitial { display:none; }
+
+  /* ---------- production chrome: topbar chips, modals, footer ---------- */
+  .chip {
+    font-size:10px; color:#d7d0ff; background:rgba(10,5,30,.56);
+    border:1px solid rgba(124,77,255,.32); border-radius:999px; padding:5px 9px;
+    cursor:pointer; white-space:nowrap;
+  }
+  .chip:hover { border-color:rgba(124,77,255,.65); color:#fff; }
+  .chip b { color:#fff; }
+  #nickChip[hidden], #lbBtn[hidden] { display:none; }
+
+  .modal {
+    position:fixed; inset:0; z-index:60;
+    background:rgba(4,1,14,.86); backdrop-filter: blur(4px);
+    display:flex; align-items:center; justify-content:center;
+    padding: calc(16px + var(--safe-top)) 16px calc(16px + var(--safe-bottom));
+    overflow-y:auto;
+  }
+  .modal[hidden] { display:none; }
+  .modal-card {
+    width:100%; max-width:380px; max-height:100%;
+    background:linear-gradient(180deg,rgba(16,10,42,.98),rgba(8,4,26,.99));
+    border:1px solid rgba(124,77,255,.38); border-radius:18px;
+    padding:20px 18px; box-shadow:0 18px 50px rgba(0,0,0,.5);
+    display:flex; flex-direction:column; min-height:0;
+  }
+  .modal-card h2 { font-size:20px; margin-bottom:6px; }
+  .modal-card h3 { font-size:13px; letter-spacing:.08em; color:#e7e0ff; margin-bottom:10px; }
+  .modal-card p { font-size:12.5px; color:#c9c0ff; line-height:1.55; margin-bottom:12px; }
+  .modal-foot { font-size:9.5px; color:#6b6192; line-height:1.5; margin-top:12px; }
+  .modal-close { background:none; border:none; color:#8f84b8; font-size:18px; cursor:pointer; padding:0 4px; }
+  .modal-head { display:flex; align-items:center; justify-content:space-between; gap:10px; flex:0 0 auto; }
+
+  .field-label { display:block; font-size:10px; letter-spacing:.08em; color:#9e94c6; margin-bottom:6px; }
+  .text-input {
+    width:100%; background:rgba(255,255,255,.05); color:#fff;
+    border:1px solid rgba(124,77,255,.42); border-radius:12px;
+    padding:12px 14px; font-size:15px; outline:none; font-family:inherit;
+  }
+  .text-input:focus { border-color:#00e5ff; }
+  .form-msg { font-size:11px; margin-top:8px; min-height:15px; }
+  .form-msg.err { color:#ff8a9c; }
+  .form-msg.ok { color:#66f4ff; }
+  .form-msg.muted { color:#8f84b8; }
+
+  /* leaderboard list */
+  #lbList { flex:1; min-height:0; overflow-y:auto; margin:4px -4px 0; padding:0 4px; -webkit-overflow-scrolling:touch; }
+  .lb-head, .lb-entry {
+    display:grid; grid-template-columns: 42px 1fr auto; gap:10px;
+    align-items:center; padding:7px 8px; font-size:12.5px;
+  }
+  .lb-head { font-size:9.5px; letter-spacing:.08em; color:#8f84b8; border-bottom:1px solid rgba(124,77,255,.2); position:sticky; top:0; background:#0b0620; }
+  .lb-entry { color:#c9c0ff; border-radius:8px; }
+  .lb-entry:nth-child(odd) { background:rgba(255,255,255,.025); }
+  .lb-entry .lb-rank { color:#8f84b8; font-variant-numeric:tabular-nums; }
+  .lb-entry .lb-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .lb-entry .lb-score { color:#fff; font-weight:700; font-variant-numeric:tabular-nums; }
+  .lb-entry.me { background:rgba(0,229,255,.10); color:#66f4ff; }
+  .lb-entry.me .lb-rank, .lb-entry.me .lb-score { color:#66f4ff; }
+  .lb-entry.top .lb-rank { color:#ffcc4d; }
+  #lbSelfWrap { flex:0 0 auto; border-top:1px dashed rgba(124,77,255,.35); margin-top:6px; padding-top:6px; }
+  #lbSelfWrap[hidden] { display:none; }
+
+  .stat-grid { display:grid; grid-template-columns:1fr auto; gap:6px 12px; font-size:12.5px; color:#c9c0ff; margin-bottom:14px; }
+  .stat-grid b { color:#fff; }
+
+  /* result-card extras */
+  .result-highlight { color:#ffcc4d; font-weight:700; font-size:12.5px; letter-spacing:.04em; margin:6px 0; }
+  #overlayFoot {
+    position:absolute; left:0; right:0; bottom:calc(10px + var(--safe-bottom));
+    text-align:center; font-size:10px; color:#5f5680; z-index:31;
+  }
+  #overlayFoot button { background:none; border:none; color:#7a6fa8; font-size:10px; cursor:pointer; text-decoration:underline; font-family:inherit; }
+  #overlayFoot button:hover { color:#c9c0ff; }
 </style>
 </head>
 <body>
@@ -224,7 +318,8 @@
   <div id="topbar">
     <span><span data-i18n="attempt">Attempt</span> <b id="attemptNum">1</b>/3</span>
     <div id="topbarRight">
-      <span id="rankBadge"><span data-i18n="rank">Global rank</span>: <b id="rankVal">—</b></span>
+      <button class="chip" id="lbBtn" onclick="openLeaderboard()" data-i18n="leaderboardBtn">Leaderboard</button>
+      <button class="chip" id="nickChip" onclick="openProfile()" hidden>@<b id="nickChipName"></b></button>
       <span id="bestTag"><span data-i18n="best">Best</span>: <b id="bestVal">—</b></span>
       <select id="langSelect" aria-label="Language">
         <option value="en">EN</option>
@@ -293,6 +388,63 @@
       <button class="btn" onclick="startGame()" data-i18n="play">Play</button>
       <div id="source-note" data-i18n="sourceNote">Escape-circuit activity is a simplified computational model based on published connectome research.</div>
     </div>
+    <div id="overlayFoot">
+      <button onclick="openPrivacy()" data-i18n="privacy">Privacy</button>
+    </div>
+  </div>
+
+  <!-- ---------- nickname ---------- -->
+  <div class="modal" id="nickModal" hidden>
+    <div class="modal-card">
+      <h2><span class="accent">YOU</span> vs <span class="accent">166,691</span></h2>
+      <h3 data-i18n="nickTitle">CHOOSE YOUR NICKNAME</h3>
+      <p data-i18n="nickSub">Your best score will appear on the global leaderboard.</p>
+      <label class="field-label" for="nickInput" data-i18n="nickLabel">Your nickname</label>
+      <input class="text-input" id="nickInput" maxlength="16" autocomplete="off" autocapitalize="off"
+             autocorrect="off" spellcheck="false" placeholder="NeuralHunter">
+      <div class="form-msg" id="nickMsg"></div>
+      <button class="btn" id="nickSubmit" onclick="submitNickname()" data-i18n="nickEnter">ENTER THE ARENA</button>
+      <div class="modal-foot" data-i18n="nickFoot">No account required. Your nickname and scores are public.</div>
+    </div>
+  </div>
+
+  <!-- ---------- leaderboard ---------- -->
+  <div class="modal" id="lbModal" hidden>
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3 data-i18n="globalLeaderboard">GLOBAL LEADERBOARD</h3>
+        <button class="modal-close" onclick="closeModal('lbModal')" aria-label="Close">✕</button>
+      </div>
+      <div class="lb-head">
+        <span>#</span><span data-i18n="lbPlayer">PLAYER</span><span data-i18n="lbScore">SCORE</span>
+      </div>
+      <div id="lbList"></div>
+      <div id="lbSelfWrap" hidden></div>
+    </div>
+  </div>
+
+  <!-- ---------- profile ---------- -->
+  <div class="modal" id="profileModal" hidden>
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3 data-i18n="profileTitle">PROFILE</h3>
+        <button class="modal-close" onclick="closeModal('profileModal')" aria-label="Close">✕</button>
+      </div>
+      <div class="stat-grid" id="profileStats"></div>
+      <button class="btn secondary" onclick="openNicknameModal(true)" data-i18n="changeNick">Change nickname</button>
+    </div>
+  </div>
+
+  <!-- ---------- privacy ---------- -->
+  <div class="modal" id="privacyModal" hidden>
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3 data-i18n="privacyTitle">PRIVACY</h3>
+        <button class="modal-close" onclick="closeModal('privacyModal')" aria-label="Close">✕</button>
+      </div>
+      <p data-i18n="privacyBody">Your nickname and your scores are public and appear on the global leaderboard. Signing in is anonymous: we store a random account id for your browser, with no email, phone or password. Your language and local best score are kept in this browser's localStorage. If ads are enabled later, Google may use its own technologies to serve them.</p>
+      <p style="font-size:11px"><a href="privacy.html" style="color:#7c4dff" target="_blank" rel="noopener" data-i18n="privacyFull">Full privacy page</a></p>
+    </div>
   </div>
 
   <!-- reserved for a real AdSense H5 Games interstitial once the account is approved -->
@@ -343,6 +495,27 @@ const CONFIG = {
 
 // Temporary balancing aid — set true to see live neural/threat numbers on screen.
 const DEBUG_NEURAL = false;
+
+/* =========================================================================
+   PRODUCTION CONFIG  ——  the only values you need to edit before deploying
+   =========================================================================
+   1. SUPABASE_URL / SUPABASE_PUBLISHABLE_KEY: Supabase dashboard →
+      Project Settings → API. Use the publishable ("anon") key ONLY.
+      NEVER paste a service_role key here — it would be public to everyone.
+   2. ADS_CONFIG: leave enabled:false until AdSense approves the account.
+   While the values below are still placeholders the game runs fine and the
+   leaderboard simply reports that it is unavailable.
+   ========================================================================= */
+const SUPABASE_URL = 'PASTE_SUPABASE_URL_HERE';
+const SUPABASE_PUBLISHABLE_KEY = 'PASTE_SUPABASE_PUBLISHABLE_KEY_HERE';
+
+const GAME_VERSION = 'v5.0';
+
+const ADS_CONFIG = {
+  enabled: false,                        // flip to true only once approved
+  publisherId: 'ca-pub-PASTE_ID_HERE',   // AdSense publisher id
+  gamesBetweenInterstitials: 2           // show at most one per N finished games
+};
 let debugEl = null;
 function renderDebugPanel(d){
   if (!debugEl) {
@@ -380,7 +553,23 @@ const I18N = {
     copied:"Share text copied.",
     escapesCaused:"Escapes caused", closestApproach:"Closest approach",
     giantFiberPeak:"Giant Fiber peak", timeLabel:"Time",
-    escapeOf:"ESCAPE {n}/{max}", outOfEscapes:"OUT OF ESCAPES"
+    escapeOf:"ESCAPE {n}/{max}", outOfEscapes:"OUT OF ESCAPES",
+    leaderboardBtn:"Leaderboard", globalLeaderboard:"GLOBAL LEADERBOARD",
+    lbPlayer:"PLAYER", lbScore:"SCORE", lbEmpty:"No scores yet. Be the first.",
+    lbUnavailable:"Leaderboard temporarily unavailable.", lbLoading:"Loading…",
+    nickTitle:"CHOOSE YOUR NICKNAME", nickSub:"Your best score will appear on the global leaderboard.",
+    nickLabel:"Your nickname", nickEnter:"ENTER THE ARENA",
+    nickFoot:"No account required. Your nickname and scores are public.",
+    nickTaken:"This nickname is already taken.",
+    nickInvalid:"Use 3–16 characters — letters, numbers or _",
+    nickSaving:"Saving…", nickError:"Could not save your nickname. Try again.",
+    changeNick:"Change nickname", profileTitle:"PROFILE", gamesPlayed:"Games played",
+    personalBest:"Personal best", globalRank:"Global rank",
+    newBest:"NEW PERSONAL BEST", movedUp:"You moved up {n} places",
+    submitting:"Submitting score…", submitFailed:"Score not submitted.",
+    retrySubmit:"Retry", offlineMode:"Offline — scores are not saved.",
+    privacy:"Privacy", privacyTitle:"PRIVACY", privacyFull:"Full privacy page",
+    privacyBody:"Your nickname and your scores are public and appear on the global leaderboard. Signing in is anonymous: we store a random account id for your browser, with no email, phone or password. Your language and local best score are kept in this browser's localStorage. If ads are enabled later, Google may use its own technologies to serve them."
   },
   pt: {
     brainLive:"CÉREBRO DA MOSCA AO VIVO", brainSub:"visual → decisão → fuga",
@@ -402,7 +591,23 @@ const I18N = {
     copied:"Texto copiado.",
     escapesCaused:"Fugas provocadas", closestApproach:"Aproximação mínima",
     giantFiberPeak:"Pico do Giant Fiber", timeLabel:"Tempo",
-    escapeOf:"FUGA {n}/{max}", outOfEscapes:"SEM MAIS FUGAS"
+    escapeOf:"FUGA {n}/{max}", outOfEscapes:"SEM MAIS FUGAS",
+    leaderboardBtn:"Ranking", globalLeaderboard:"RANKING GLOBAL",
+    lbPlayer:"JOGADOR", lbScore:"PONTOS", lbEmpty:"Ainda sem pontuações. Seja o primeiro.",
+    lbUnavailable:"Ranking temporariamente indisponível.", lbLoading:"Carregando…",
+    nickTitle:"ESCOLHA SEU APELIDO", nickSub:"Seu melhor score vai aparecer no ranking global.",
+    nickLabel:"Seu apelido", nickEnter:"ENTRAR NA ARENA",
+    nickFoot:"Sem cadastro. Seu apelido e seus scores são públicos.",
+    nickTaken:"Esse apelido já está em uso.",
+    nickInvalid:"Use 3–16 caracteres — letras, números ou _",
+    nickSaving:"Salvando…", nickError:"Não consegui salvar o apelido. Tente de novo.",
+    changeNick:"Trocar apelido", profileTitle:"PERFIL", gamesPlayed:"Partidas jogadas",
+    personalBest:"Recorde pessoal", globalRank:"Ranking global",
+    newBest:"NOVO RECORDE PESSOAL", movedUp:"Você subiu {n} posições",
+    submitting:"Enviando score…", submitFailed:"Score não enviado.",
+    retrySubmit:"Tentar de novo", offlineMode:"Offline — scores não são salvos.",
+    privacy:"Privacidade", privacyTitle:"PRIVACIDADE", privacyFull:"Página completa de privacidade",
+    privacyBody:"Seu apelido e seus scores são públicos e aparecem no ranking global. O login é anônimo: guardamos um id de conta aleatório para o seu navegador, sem e-mail, telefone ou senha. Seu idioma e seu recorde local ficam no localStorage deste navegador. Se anúncios forem ativados depois, o Google pode usar tecnologias próprias para exibi-los."
   },
   zh: {
     brainLive:"果蝇大脑实时活动", brainSub:"视觉 → 决策 → 逃逸",
@@ -424,7 +629,23 @@ const I18N = {
     copied:"分享文本已复制。",
     escapesCaused:"引发的逃逸次数", closestApproach:"最近距离",
     giantFiberPeak:"Giant Fiber 峰值", timeLabel:"用时",
-    escapeOf:"逃逸 {n}/{max}", outOfEscapes:"逃逸次数已用完"
+    escapeOf:"逃逸 {n}/{max}", outOfEscapes:"逃逸次数已用完",
+    leaderboardBtn:"排行榜", globalLeaderboard:"全球排行榜",
+    lbPlayer:"玩家", lbScore:"得分", lbEmpty:"还没有成绩，来做第一个。",
+    lbUnavailable:"排行榜暂时不可用。", lbLoading:"加载中…",
+    nickTitle:"选择你的昵称", nickSub:"你的最佳成绩将出现在全球排行榜上。",
+    nickLabel:"你的昵称", nickEnter:"进入竞技场",
+    nickFoot:"无需注册。你的昵称和成绩是公开的。",
+    nickTaken:"这个昵称已被使用。",
+    nickInvalid:"请使用 3–16 个字符：字母、数字或 _",
+    nickSaving:"保存中…", nickError:"无法保存昵称，请重试。",
+    changeNick:"修改昵称", profileTitle:"个人资料", gamesPlayed:"已玩局数",
+    personalBest:"个人最佳", globalRank:"全球排名",
+    newBest:"个人新纪录", movedUp:"你上升了 {n} 位",
+    submitting:"正在提交成绩…", submitFailed:"成绩未提交。",
+    retrySubmit:"重试", offlineMode:"离线 — 成绩不会保存。",
+    privacy:"隐私", privacyTitle:"隐私", privacyFull:"完整隐私说明",
+    privacyBody:"你的昵称和成绩是公开的，会显示在全球排行榜上。登录是匿名的：我们为你的浏览器保存一个随机账户 id，不涉及邮箱、电话或密码。语言和本地最佳成绩保存在浏览器 localStorage 中。若以后启用广告，Google 可能使用其自有技术投放广告。"
   },
   es: {
     brainLive:"CEREBRO DE MOSCA EN VIVO", brainSub:"visual → decisión → escape",
@@ -446,7 +667,23 @@ const I18N = {
     copied:"Texto copiado.",
     escapesCaused:"Escapes provocados", closestApproach:"Aproximación más cercana",
     giantFiberPeak:"Pico de Giant Fiber", timeLabel:"Tiempo",
-    escapeOf:"ESCAPE {n}/{max}", outOfEscapes:"SIN MÁS ESCAPES"
+    escapeOf:"ESCAPE {n}/{max}", outOfEscapes:"SIN MÁS ESCAPES",
+    leaderboardBtn:"Ranking", globalLeaderboard:"RANKING GLOBAL",
+    lbPlayer:"JUGADOR", lbScore:"PUNTOS", lbEmpty:"Aún no hay puntuaciones. Sé el primero.",
+    lbUnavailable:"Ranking no disponible por ahora.", lbLoading:"Cargando…",
+    nickTitle:"ELIGE TU APODO", nickSub:"Tu mejor puntuación aparecerá en el ranking global.",
+    nickLabel:"Tu apodo", nickEnter:"ENTRAR EN LA ARENA",
+    nickFoot:"Sin cuenta. Tu apodo y tus puntuaciones son públicos.",
+    nickTaken:"Ese apodo ya está en uso.",
+    nickInvalid:"Usa 3–16 caracteres — letras, números o _",
+    nickSaving:"Guardando…", nickError:"No se pudo guardar tu apodo. Inténtalo de nuevo.",
+    changeNick:"Cambiar apodo", profileTitle:"PERFIL", gamesPlayed:"Partidas jugadas",
+    personalBest:"Récord personal", globalRank:"Ranking global",
+    newBest:"NUEVO RÉCORD PERSONAL", movedUp:"Subiste {n} puestos",
+    submitting:"Enviando puntuación…", submitFailed:"Puntuación no enviada.",
+    retrySubmit:"Reintentar", offlineMode:"Sin conexión — no se guardan puntuaciones.",
+    privacy:"Privacidad", privacyTitle:"PRIVACIDAD", privacyFull:"Página completa de privacidad",
+    privacyBody:"Tu apodo y tus puntuaciones son públicos y aparecen en el ranking global. El acceso es anónimo: guardamos un id de cuenta aleatorio para tu navegador, sin correo, teléfono ni contraseña. Tu idioma y tu récord local se guardan en el localStorage de este navegador. Si más adelante se activan anuncios, Google puede usar sus propias tecnologías para mostrarlos."
   },
   ru: {
     brainLive:"МОЗГ МУХИ В РЕАЛЬНОМ ВРЕМЕНИ", brainSub:"зрение → решение → побег",
@@ -468,7 +705,23 @@ const I18N = {
     copied:"Текст скопирован.",
     escapesCaused:"Спровоцировано побегов", closestApproach:"Ближайшее приближение",
     giantFiberPeak:"Пик Giant Fiber", timeLabel:"Время",
-    escapeOf:"ПОБЕГ {n}/{max}", outOfEscapes:"ПОБЕГИ ЗАКОНЧИЛИСЬ"
+    escapeOf:"ПОБЕГ {n}/{max}", outOfEscapes:"ПОБЕГИ ЗАКОНЧИЛИСЬ",
+    leaderboardBtn:"Рейтинг", globalLeaderboard:"МИРОВОЙ РЕЙТИНГ",
+    lbPlayer:"ИГРОК", lbScore:"СЧЁТ", lbEmpty:"Пока нет результатов. Будь первым.",
+    lbUnavailable:"Рейтинг временно недоступен.", lbLoading:"Загрузка…",
+    nickTitle:"ВЫБЕРИ НИК", nickSub:"Твой лучший результат попадёт в мировой рейтинг.",
+    nickLabel:"Твой ник", nickEnter:"НА АРЕНУ",
+    nickFoot:"Без регистрации. Ник и результаты публичны.",
+    nickTaken:"Этот ник уже занят.",
+    nickInvalid:"3–16 символов — буквы, цифры или _",
+    nickSaving:"Сохранение…", nickError:"Не удалось сохранить ник. Попробуй снова.",
+    changeNick:"Сменить ник", profileTitle:"ПРОФИЛЬ", gamesPlayed:"Сыграно игр",
+    personalBest:"Личный рекорд", globalRank:"Место в рейтинге",
+    newBest:"НОВЫЙ ЛИЧНЫЙ РЕКОРД", movedUp:"Ты поднялся на {n} позиций",
+    submitting:"Отправка счёта…", submitFailed:"Счёт не отправлен.",
+    retrySubmit:"Повторить", offlineMode:"Оффлайн — результаты не сохраняются.",
+    privacy:"Конфиденциальность", privacyTitle:"КОНФИДЕНЦИАЛЬНОСТЬ", privacyFull:"Полная страница",
+    privacyBody:"Твой ник и результаты публичны и показываются в мировом рейтинге. Вход анонимный: мы храним случайный id аккаунта для браузера — без e-mail, телефона и пароля. Язык и локальный рекорд хранятся в localStorage. Если позже включат рекламу, Google может использовать свои технологии."
   }
 };
 
@@ -976,6 +1229,7 @@ function triggerEscape(reactionMs){
   document.getElementById('reactionPopup').style.display = 'block';
   flash();
   setTimeout(() => { document.getElementById('reactionPopup').style.display = 'none'; }, Math.min(900, fly.dash.dur + 500));
+  trackEvent('fly_escaped', { escape: state.escapesUsed, attempt: state.attempt, reactionMs });
 }
 
 function enterRecovering(){
@@ -1123,6 +1377,10 @@ function computeFinalScore(elapsedSec){
   return Math.max(1, Math.round(precision*0.4 + stealth*0.35 + speedBonus - escapePenalty - attemptPenalty));
 }
 
+// Result of the most recent finished game, plus whatever the server said
+// about it. Share and the retry button both read from here.
+let lastResult = null;
+
 function finishGame(success){
   gameState = GameState.GAME_OVER;
   const elapsed = Math.max(0.2, (performance.now() - state.runStart)/1000);
@@ -1134,84 +1392,514 @@ function finishGame(success){
     document.getElementById('bestVal').textContent = state.best + ' pts';
   }
 
-  const demoRank = success ? Math.max(1, Math.round(9000 / Math.max(1, score))) : null;
-  document.getElementById('rankVal').textContent = '—'; // no real backend yet
+  completedGamesCount++;
+  try { localStorage.setItem('yv_games', completedGamesCount); } catch(_) {}
 
-  submitScore({
-    score, success, escapes: state.escapesTotal, minDist: Math.round(state.minDist),
-    peakGF: Math.round(state.peakGF), elapsed, attempts: state.attempt
-  });
+  lastResult = {
+    success,
+    localScore: score,
+    officialScore: null,
+    rank: null,
+    personalBest: null,
+    movedUp: 0,
+    newBest: false,
+    submitted: false,
+    run: {
+      success,
+      escapes: state.escapesTotal,
+      minDist: Math.round(Math.min(state.minDist, 5000)),
+      peakGF: Math.round(state.peakGF),
+      elapsedMs: Math.round(elapsed * 1000),
+      attempts: state.attempt
+    },
+    stats: {
+      escapes: state.escapesTotal,
+      minDist: Math.round(state.minDist),
+      peakGF: Math.round(state.peakGF),
+      elapsed
+    }
+  };
 
-  const leaderboard = success ? `
-    <div id="leaderboard">
-      <h3>${tr('leaderboard')} · ${tr('offline')}</h3>
-      <div class="lb-row"><span>#1 NeuralNinja</span><b>97</b></div>
-      <div class="lb-row"><span>#2 FlyHunter</span><b>94</b></div>
-      <div class="lb-row"><span>#3 SynapseKid</span><b>91</b></div>
-      <div class="lb-row me"><span>#${demoRank} ${tr('you')}</span><b>${score}</b></div>
-    </div>` : '';
-
-  const card = document.getElementById('overlayCard');
-  card.innerHTML = success ? `
-    <h2>🪰 <span class="accent">${tr('caught')}</span></h2>
-    <p>${tr('caughtDesc')}</p>
-    <div id="statLine">
-      🎯 ${tr('score')}: <b>${score}</b><br>
-      🌀 ${tr('escapesCaused')}: <b>${state.escapesTotal}</b><br>
-      📍 ${tr('closestApproach')}: <b>${Math.round(state.minDist)} px</b><br>
-      🧬 ${tr('giantFiberPeak')}: <b>${Math.round(state.peakGF)}%</b><br>
-      ⏱ ${tr('timeLabel')}: <b>${elapsed.toFixed(1)}s</b><br>
-      🥇 ${tr('record')}: <b>${state.best}</b>
-    </div>
-    ${leaderboard}
-    <button class="btn" onclick="startGame()">${tr('again')}</button>
-    <button class="btn secondary" onclick="shareResult(${score}, true)">↗ ${tr('share')}</button>
-    <div id="source-note">${tr('sourceNote')}</div>
-  ` : `
-    <h2>💀 <span class="accent">${tr('brainWon')}</span></h2>
-    <p>${tr('lostDesc')}</p>
-    <div id="statLine">
-      🌀 ${tr('escapesCaused')}: <b>${state.escapesTotal}</b><br>
-      📍 ${tr('closestApproach')}: <b>${Math.round(state.minDist)} px</b><br>
-      🥇 ${tr('record')}: <b>${state.best > 0 ? state.best+' pts' : '—'}</b>
-    </div>
-    <button class="btn" onclick="startGame()">${tr('retry')}</button>
-    <div id="source-note">${tr('sourceNote')}</div>
-  `;
+  trackEvent(success ? 'game_won' : 'game_lost', lastResult.run);
+  renderResultCard();
   document.getElementById('overlay').hidden = false;
+  if (success) trySubmitRun();
+  else if (nicknamePromptPending) openNicknameModal(false);
 }
 
-function shareResult(score, success) {
+function renderResultCard(){
+  if (!lastResult) return;
+  const r = lastResult;
+  const s = r.stats;
+  const shownScore = r.officialScore != null ? r.officialScore : r.localScore;
+  const card = document.getElementById('overlayCard');
+
+  const statBlock = `
+    <div id="statLine">
+      🌀 ${tr('escapesCaused')}: <b>${s.escapes}</b><br>
+      📍 ${tr('closestApproach')}: <b>${s.minDist} px</b><br>
+      🧬 ${tr('giantFiberPeak')}: <b>${s.peakGF}%</b><br>
+      ⏱ ${tr('timeLabel')}: <b>${s.elapsed.toFixed(1)}s</b>
+    </div>`;
+
+  if (!r.success) {
+    card.innerHTML = `
+      <h2>💀 <span class="accent">${tr('brainWon')}</span></h2>
+      <p>${tr('lostDesc')}</p>
+      ${statBlock}
+      <button class="btn" onclick="playAgain()">${tr('retry')}</button>
+      <div id="source-note">${tr('sourceNote')}</div>`;
+    return;
+  }
+
+  const headline = `
+    <div id="statLine">
+      🎯 ${tr('score')}: <b>${shownScore}</b><br>
+      🌐 ${tr('globalRank')}: <b>${r.rank != null ? '#'+r.rank : '—'}</b><br>
+      🥇 ${tr('personalBest')}: <b>${r.personalBest != null ? r.personalBest : state.best}</b>
+    </div>`;
+
+  const badges =
+    (r.newBest ? `<div class="result-highlight">⭐ ${tr('newBest')}</div>` : '') +
+    (r.movedUp > 0 ? `<div class="result-highlight">▲ ${tr('movedUp', { n: r.movedUp })}</div>` : '');
+
+  card.innerHTML = `
+    <h2>🪰 <span class="accent">${tr('caught')}</span></h2>
+    <p>${tr('caughtDesc')}</p>
+    ${headline}
+    ${badges}
+    ${statBlock}
+    <div class="form-msg muted" id="submitLine"></div>
+    <button class="btn" onclick="playAgain()">${tr('again')}</button>
+    <button class="btn secondary" onclick="shareResult()">↗ ${tr('share')}</button>
+    <div id="source-note">${tr('sourceNote')}</div>`;
+}
+
+function setSubmitLine(html, cls){
+  const el = document.getElementById('submitLine');
+  if (!el) return;
+  el.className = 'form-msg ' + (cls || 'muted');
+  el.innerHTML = html;
+}
+
+async function trySubmitRun(){
+  if (!lastResult || !lastResult.success || lastResult.submitted) return;
+
+  if (backend.status === 'connecting') {
+    // wait for the connection, but never poll forever
+    lastResult.waitTicks = (lastResult.waitTicks || 0) + 1;
+    if (lastResult.waitTicks <= 16) { setSubmitLine(tr('submitting')); setTimeout(trySubmitRun, 600); return; }
+    setSubmitLine(tr('offlineMode')); return;
+  }
+  if (backend.status !== 'ready')      { setSubmitLine(tr('offlineMode')); return; }
+  if (!backend.profile)                { setSubmitLine(tr('nickTitle')); openNicknameModal(false); return; }
+
+  setSubmitLine(tr('submitting'));
+  const res = await submitRun(lastResult.run);
+
+  if (!res.ok) {
+    setSubmitLine(`${tr('submitFailed')} <button class="chip" onclick="trySubmitRun()">${tr('retrySubmit')}</button>`, 'err');
+    trackEvent('score_submit_failed', { reason: res.reason });
+    return;
+  }
+
+  const d = res.result || {};
+  lastResult.submitted = true;
+  lastResult.officialScore = d.official_score ?? lastResult.localScore;
+  lastResult.rank = d.global_rank ?? null;
+  lastResult.personalBest = d.personal_best ?? null;
+  lastResult.newBest = !!d.improved;
+  lastResult.movedUp = (d.previous_rank != null && d.global_rank != null && d.previous_rank > d.global_rank)
+    ? d.previous_rank - d.global_rank : 0;
+
+  renderResultCard();
+  setSubmitLine('');
+  refreshMyStanding();
+  trackEvent('score_submitted', {
+    score: lastResult.officialScore, rank: lastResult.rank, newBest: lastResult.newBest
+  });
+}
+
+function shareResult() {
+  const r = lastResult;
+  const success = !!(r && r.success);
+  const score = r ? (r.officialScore != null ? r.officialScore : r.localScore) : 0;
+  const rank = r && r.rank != null ? r.rank : null;
+  // Never invent a rank: the line is simply omitted when the server did not
+  // give us one (offline, submit failed, or no leaderboard entry yet).
+  const rankLine = {
+    en: rank ? `\nGlobal rank: #${rank}` : '',
+    pt: rank ? `\nRanking global: #${rank}` : '',
+    zh: rank ? `\n全球排名：#${rank}` : '',
+    es: rank ? `\nRanking global: #${rank}` : '',
+    ru: rank ? `\nМесто в рейтинге: #${rank}` : ''
+  };
   const templates = {
-    en: success ? `I beat a mapped fly brain. Score: ${score}. Can you beat my rank?` : `I lost to a fly nervous system with 166,691 mapped neurons.`,
-    pt: success ? `Eu venci um cérebro de mosca mapeado. Pontuação: ${score}. Consegue bater meu ranking?` : `Eu perdi para um sistema nervoso de mosca com 166.691 neurônios mapeados.`,
-    zh: success ? `我击败了一个已绘制的果蝇大脑。得分：${score}。你能超过我的排名吗？` : `我输给了一个拥有 166,691 个已绘制神经元的果蝇神经系统。`,
-    es: success ? `Vencí a un cerebro de mosca mapeado. Puntuación: ${score}. ¿Puedes superar mi ranking?` : `Perdí contra un sistema nervioso de mosca con 166.691 neuronas mapeadas.`,
-    ru: success ? `Я победил картированный мозг мухи. Счёт: ${score}. Сможешь обойти мой рейтинг?` : `Я проиграл нервной системе мухи с 166 691 картированными нейронами.`
+    en: success ? `I beat the fly brain 🪰🧠\n\nScore: ${score}${rankLine.en}\n\nCan you beat me?` : `I lost to a fly nervous system with 166,691 mapped neurons 🪰🧠\n\nCan you do better?`,
+    pt: success ? `Eu venci o cérebro da mosca 🪰🧠\n\nPontuação: ${score}${rankLine.pt}\n\nConsegue me superar?` : `Eu perdi para um sistema nervoso de mosca com 166.691 neurônios mapeados 🪰🧠\n\nVocê consegue fazer melhor?`,
+    zh: success ? `我击败了果蝇大脑 🪰🧠\n\n得分：${score}${rankLine.zh}\n\n你能超过我吗？` : `我输给了拥有 166,691 个已绘制神经元的果蝇神经系统 🪰🧠\n\n你能做得更好吗？`,
+    es: success ? `Vencí al cerebro de la mosca 🪰🧠\n\nPuntuación: ${score}${rankLine.es}\n\n¿Puedes superarme?` : `Perdí contra un sistema nervioso de mosca con 166.691 neuronas mapeadas 🪰🧠\n\n¿Puedes hacerlo mejor?`,
+    ru: success ? `Я победил мозг мухи 🪰🧠\n\nСчёт: ${score}${rankLine.ru}\n\nСможешь обойти меня?` : `Я проиграл нервной системе мухи с 166 691 картированными нейронами 🪰🧠\n\nСможешь лучше?`
   };
   const shareText = templates[currentLang] || templates.en;
+  // location.origin, never a hardcoded host — a custom domain just works.
+  const shareUrl = location.origin + location.pathname;
+  trackEvent('share_clicked', { score, rank });
+
   if (navigator.share) {
-    navigator.share({ title: 'YOU vs 166,691', text: shareText, url: location.href }).catch(()=>{});
+    navigator.share({ title: 'YOU vs 166,691', text: shareText, url: shareUrl }).catch(()=>{});
   } else {
-    navigator.clipboard?.writeText(shareText + ' ' + location.href);
+    navigator.clipboard?.writeText(shareText + '\n\n' + shareUrl);
     alert(tr('copied'));
   }
 }
 
 /* =========================================================================
-   LEADERBOARD (no fake backend — clean async interface for later)
+   ANALYTICS — no-op hooks, ready for a real provider later
    ========================================================================= */
-const LEADERBOARD_MODE = 'local'; // 'local' | 'supabase'
-// TODO: connect Supabase leaderboard here
-async function submitScore(scoreData) {
-  if (LEADERBOARD_MODE !== 'supabase') return null;
-  // const { data, error } = await supabaseClient.from('scores').insert(scoreData);
-  return null;
+function trackEvent(name, data){
+  // Swap this body for a real provider (Plausible, GA4, PostHog…) when needed.
+  if (DEBUG_NEURAL) console.log('[event]', name, data || {});
 }
-async function fetchLeaderboard() {
-  if (LEADERBOARD_MODE !== 'supabase') return [];
-  // const { data, error } = await supabaseClient.from('scores').select('*').order('score', { ascending:false }).limit(10);
-  return [];
+
+/* =========================================================================
+   BACKEND — Supabase: anonymous auth, profiles, runs, leaderboard
+   Everything here degrades to "offline" without ever blocking gameplay.
+   ========================================================================= */
+const backend = {
+  status: 'idle',   // idle | connecting | ready | offline
+  client: null,
+  userId: null,
+  profile: null,    // { user_id, nickname }
+  myRank: null,
+  myBest: null
+};
+
+const credentialsConfigured = () =>
+  /^https:\/\/.+\.supabase\.co/.test(SUPABASE_URL) && SUPABASE_PUBLISHABLE_KEY.length > 30;
+
+function waitForSupabaseLib(timeoutMs = 6000){
+  return new Promise(resolve => {
+    if (window.supabase?.createClient) return resolve(true);
+    const started = Date.now();
+    const timer = setInterval(() => {
+      if (window.supabase?.createClient) { clearInterval(timer); resolve(true); }
+      else if (Date.now() - started > timeoutMs) { clearInterval(timer); resolve(false); }
+    }, 120);
+  });
+}
+
+async function initBackend(){
+  if (!credentialsConfigured()) {
+    backend.status = 'offline';
+    refreshIdentityUI();
+    return;
+  }
+  backend.status = 'connecting';
+  try {
+    if (!await waitForSupabaseLib()) throw new Error('supabase-js failed to load');
+    backend.client = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+      auth: { persistSession: true, autoRefreshToken: true }
+    });
+
+    // Instant entry: no email, no password, no provider. The session persists
+    // in localStorage, so a returning player keeps the same identity.
+    let { data: { session } } = await backend.client.auth.getSession();
+    if (!session) {
+      const { data, error } = await backend.client.auth.signInAnonymously();
+      if (error) throw error;
+      session = data.session;
+    }
+    backend.userId = session?.user?.id || null;
+    if (!backend.userId) throw new Error('no user id');
+
+    const { data: profile, error: profileErr } = await backend.client
+      .from('profiles').select('user_id, nickname').eq('user_id', backend.userId).maybeSingle();
+    if (profileErr) throw profileErr;
+
+    backend.profile = profile || null;
+    backend.status = 'ready';
+    refreshIdentityUI();
+    if (!backend.profile) requestNicknamePrompt();
+    else refreshMyStanding();
+  } catch (err) {
+    backend.status = 'offline';
+    backend.client = null;
+    refreshIdentityUI();
+    trackEvent('backend_offline', { message: String(err && err.message || err) });
+  }
+}
+
+async function refreshMyStanding(){
+  if (backend.status !== 'ready' || !backend.userId) return;
+  try {
+    const { data } = await backend.client
+      .from('leaderboard').select('rank, best_score').eq('user_id', backend.userId).maybeSingle();
+    backend.myRank = data?.rank ?? null;
+    backend.myBest = data?.best_score ?? null;
+    refreshIdentityUI();
+  } catch (_) { /* standing is cosmetic — never surface this */ }
+}
+
+/* ---------- nickname ---------- */
+// 3-16 chars after trimming. Letters (any language), digits, underscore,
+// spaces, hyphens and dots are fine; HTML/control characters are not.
+const NICK_FORBIDDEN = new RegExp('[<>&"\'`\\\\/\\u0000-\\u001F\\u007F\\u200B-\\u200F\\u2028\\u2029]');
+
+function validateNickname(raw){
+  const nickname = (raw || '').trim().replace(/\s+/g, ' ');
+  if (nickname.length < 3 || nickname.length > 16) return { ok:false, reason:'nickInvalid' };
+  if (NICK_FORBIDDEN.test(nickname)) return { ok:false, reason:'nickInvalid' };
+  if (!/[\p{L}\p{N}_]/u.test(nickname)) return { ok:false, reason:'nickInvalid' };
+  return { ok:true, nickname };
+}
+
+async function saveNickname(nickname){
+  const row = { user_id: backend.userId, nickname, updated_at: new Date().toISOString() };
+  const query = backend.profile
+    ? backend.client.from('profiles').update({ nickname: row.nickname, updated_at: row.updated_at }).eq('user_id', backend.userId)
+    : backend.client.from('profiles').insert(row);
+  const { error } = await query;
+  if (error) {
+    // 23505 is the unique index on lower(nickname)
+    if (error.code === '23505' || /duplicate key/i.test(error.message || '')) {
+      return { ok:false, reason:'nickTaken' };
+    }
+    return { ok:false, reason:'nickError' };
+  }
+  backend.profile = { user_id: backend.userId, nickname };
+  return { ok:true };
+}
+
+/* ---------- runs ---------- */
+// The client never decides the leaderboard score: submit_run() revalidates the
+// inputs and recomputes the official score server-side.
+async function submitRun(run){
+  if (backend.status !== 'ready') return { ok:false, reason:'offline' };
+  const { data, error } = await backend.client.rpc('submit_run', {
+    p_success: !!run.success,
+    p_escapes: run.escapes,
+    p_min_dist: run.minDist,
+    p_peak_gf: run.peakGF,
+    p_elapsed_ms: run.elapsedMs,
+    p_attempts: run.attempts,
+    p_game_version: GAME_VERSION
+  });
+  if (error) return { ok:false, reason:'error', error };
+  return { ok:true, result: data };
+}
+
+async function fetchLeaderboard(limit = 100){
+  if (backend.status !== 'ready') return { ok:false, reason:'offline' };
+  const { data, error } = await backend.client
+    .from('leaderboard').select('rank, nickname, best_score, user_id')
+    .order('rank', { ascending: true }).limit(limit);
+  if (error) return { ok:false, reason:'error', error };
+  return { ok:true, rows: data || [] };
+}
+
+async function fetchMyStats(){
+  if (backend.status !== 'ready' || !backend.userId) return null;
+  const [{ data: stand }, { count }] = await Promise.all([
+    backend.client.from('leaderboard').select('rank, best_score').eq('user_id', backend.userId).maybeSingle(),
+    backend.client.from('runs').select('id', { count:'exact', head:true }).eq('user_id', backend.userId)
+  ]);
+  return { rank: stand?.rank ?? null, best: stand?.best_score ?? null, games: count ?? 0 };
+}
+
+/* =========================================================================
+   IDENTITY / MODAL UI
+   ========================================================================= */
+function escapeHtml(str){
+  return String(str).replace(/[&<>"']/g, c =>
+    ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+}
+
+function openModal(id){ document.getElementById(id).hidden = false; }
+function closeModal(id){ document.getElementById(id).hidden = true; }
+
+// The topbar sits above the overlay so these stay reachable on the start and
+// game-over screens — but they are hidden mid-run, so nobody loses a fly to a
+// leaderboard they opened by accident. Chrome only: no game state is touched.
+function onMenuScreen(){
+  return gameState === GameState.IDLE || gameState === GameState.GAME_OVER;
+}
+
+function refreshIdentityUI(){
+  const chip = document.getElementById('nickChip');
+  const lbBtn = document.getElementById('lbBtn');
+  const menu = onMenuScreen();
+  chip.hidden = !(menu && backend.profile?.nickname);
+  if (backend.profile?.nickname) {
+    document.getElementById('nickChipName').textContent = backend.profile.nickname;
+  }
+  lbBtn.hidden = !menu;
+}
+
+// cheap watcher instead of hooking the game loop or any gameplay transition
+setInterval(() => {
+  const menu = onMenuScreen();
+  if (menu !== refreshIdentityUI._last) { refreshIdentityUI._last = menu; refreshIdentityUI(); }
+}, 250);
+
+let nicknamePromptPending = false;
+function requestNicknamePrompt(){
+  // Never interrupt a live run — queue it until the player is back on a menu.
+  if (gameState === GameState.IDLE || gameState === GameState.GAME_OVER) openNicknameModal(false);
+  else nicknamePromptPending = true;
+}
+
+function openNicknameModal(isChange){
+  if (backend.status !== 'ready') return;
+  closeModal('profileModal');
+  const input = document.getElementById('nickInput');
+  input.value = isChange ? (backend.profile?.nickname || '') : '';
+  setNickMsg('', '');
+  openModal('nickModal');
+  setTimeout(() => input.focus(), 60);
+}
+
+function setNickMsg(text, cls){
+  const el = document.getElementById('nickMsg');
+  el.textContent = text;
+  el.className = 'form-msg' + (cls ? ' ' + cls : '');
+}
+
+async function submitNickname(){
+  const btn = document.getElementById('nickSubmit');
+  const check = validateNickname(document.getElementById('nickInput').value);
+  if (!check.ok) { setNickMsg(tr(check.reason), 'err'); return; }
+
+  btn.disabled = true;
+  setNickMsg(tr('nickSaving'), 'muted');
+  const res = await saveNickname(check.nickname);
+  btn.disabled = false;
+
+  if (!res.ok) { setNickMsg(tr(res.reason), 'err'); return; }
+  setNickMsg('', '');
+  closeModal('nickModal');
+  nicknamePromptPending = false;
+  refreshIdentityUI();
+  refreshMyStanding();
+  trackEvent('nickname_created', { nickname: check.nickname });
+  // a finished run that was blocked waiting for a profile can go out now
+  if (lastResult && lastResult.success && !lastResult.submitted) trySubmitRun();
+}
+
+async function openProfile(){
+  if (backend.status !== 'ready') return;
+  const stats = document.getElementById('profileStats');
+  stats.innerHTML = `<span>${tr('lbLoading')}</span><b></b>`;
+  openModal('profileModal');
+  const s = await fetchMyStats();
+  const nick = backend.profile?.nickname || '—';
+  stats.innerHTML = `
+    <span>${tr('nickLabel')}</span><b>${escapeHtml(nick)}</b>
+    <span>${tr('personalBest')}</span><b>${s && s.best != null ? s.best : '—'}</b>
+    <span>${tr('globalRank')}</span><b>${s && s.rank != null ? '#'+s.rank : '—'}</b>
+    <span>${tr('gamesPlayed')}</span><b>${s ? s.games : '—'}</b>`;
+}
+
+function openPrivacy(){ openModal('privacyModal'); }
+
+async function openLeaderboard(){
+  openModal('lbModal');
+  trackEvent('leaderboard_opened', {});
+  const list = document.getElementById('lbList');
+  const selfWrap = document.getElementById('lbSelfWrap');
+  selfWrap.hidden = true;
+  list.innerHTML = `<div class="lb-entry"><span></span><span>${tr('lbLoading')}</span><span></span></div>`;
+
+  const res = await fetchLeaderboard(100);
+  if (!res.ok) {
+    list.innerHTML = `<div class="lb-entry"><span></span><span>${tr('lbUnavailable')}</span><span></span></div>`;
+    return;
+  }
+  if (!res.rows.length) {
+    list.innerHTML = `<div class="lb-entry"><span></span><span>${tr('lbEmpty')}</span><span></span></div>`;
+    return;
+  }
+
+  const mine = backend.userId;
+  let meInTop = false;
+  list.innerHTML = res.rows.map(r => {
+    const isMe = r.user_id === mine;
+    if (isMe) meInTop = true;
+    return `<div class="lb-entry${isMe ? ' me' : ''}${r.rank <= 3 ? ' top' : ''}">
+      <span class="lb-rank">${r.rank}</span>
+      <span class="lb-name">${escapeHtml(r.nickname)}</span>
+      <span class="lb-score">${r.best_score}</span>
+    </div>`;
+  }).join('');
+
+  if (!meInTop && backend.status === 'ready') {
+    const s = await fetchMyStats();
+    if (s && s.rank != null) {
+      selfWrap.innerHTML = `<div class="lb-entry me">
+        <span class="lb-rank">${s.rank}</span>
+        <span class="lb-name">${tr('you')} · ${escapeHtml(backend.profile?.nickname || '')}</span>
+        <span class="lb-score">${s.best}</span>
+      </div>`;
+      selfWrap.hidden = false;
+    }
+  }
+}
+
+// Escape key closes whatever modal is on top; never reaches the game.
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') ['privacyModal','profileModal','lbModal'].forEach(closeModal);
+  if (e.key === 'Enter' && !document.getElementById('nickModal').hidden) submitNickname();
+});
+
+/* =========================================================================
+   ADS — Google H5 Games Ad Placement API
+   While ADS_CONFIG.enabled is false this module issues ZERO network requests.
+   ========================================================================= */
+const ads = { loaded: false };
+let completedGamesCount = Number(localStorage.getItem('yv_games') || 0);
+
+function adsAvailable(){
+  return ADS_CONFIG.enabled && /^ca-pub-\d+$/.test(ADS_CONFIG.publisherId);
+}
+
+function loadAdsScript(){
+  if (ads.loaded || !adsAvailable()) return;
+  ads.loaded = true;
+  const s = document.createElement('script');
+  s.async = true;
+  s.crossOrigin = 'anonymous';
+  s.dataset.adFrequencyHint = '60s';
+  s.src = 'https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=' + ADS_CONFIG.publisherId;
+  s.onerror = () => { ads.loaded = false; };
+  document.head.appendChild(s);
+  window.adsbygoogle = window.adsbygoogle || [];
+  window.adBreak = window.adConfig = function(o){ window.adsbygoogle.push(o); };
+  window.adConfig({ preloadAdBreaks: 'on' });
+}
+
+// Interstitials only ever run on a natural transition: the player choosing to
+// start another game from the game-over screen, and at most once every N games.
+function maybeShowInterstitialBeforeReplay(done){
+  if (!adsAvailable() || typeof window.adBreak !== 'function') return done();
+  if (completedGamesCount % ADS_CONFIG.gamesBetweenInterstitials !== 0) return done();
+
+  let resumed = false;
+  const resume = () => { if (!resumed) { resumed = true; done(); } };
+  const bail = setTimeout(resume, 4000); // never strand the player on a slow ad
+  try {
+    window.adBreak({
+      type: 'next',
+      name: 'replay-interstitial',
+      afterAd: () => { clearTimeout(bail); resume(); },
+      adBreakDone: () => { clearTimeout(bail); resume(); }
+    });
+  } catch (_) { clearTimeout(bail); resume(); }
+}
+
+function playAgain(){
+  trackEvent('play_again', { completedGamesCount });
+  if (nicknamePromptPending) { openNicknameModal(false); return; }
+  maybeShowInterstitialBeforeReplay(() => startGame());
 }
 
 /* =========================================================================
@@ -1243,6 +1931,7 @@ function startGame() {
   document.getElementById('attemptNum').textContent = state.attempt;
   resetForNextAttempt();
   gameState = GameState.PLAYING;
+  trackEvent('game_started', { attempt: state.attempt });
 }
 
 /* =========================================================================
@@ -1532,6 +2221,19 @@ renderGame(0.016);
 renderBrain();
 
 requestAnimationFrame(frame);
+
+/* ---------- production boot: canonical URL, backend, ads ---------- */
+// Works on any origin, so pointing a custom domain at this build needs no edit.
+(function bootProduction(){
+  const cleanUrl = location.origin + location.pathname;
+  const canonical = document.getElementById('canonicalLink');
+  if (canonical) canonical.href = cleanUrl;
+  const ogUrl = document.querySelector('meta[property="og:url"]');
+  if (ogUrl && /REPLACE-WITH-YOUR-DOMAIN/.test(ogUrl.content)) ogUrl.content = cleanUrl;
+
+  loadAdsScript();      // no-ops entirely while ADS_CONFIG.enabled is false
+  initBackend();        // async; gameplay never waits on it
+})();
 </script>
 </body>
 </html>
