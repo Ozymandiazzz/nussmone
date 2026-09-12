@@ -1,0 +1,2287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5007193182817860" crossorigin="anonymous"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>YOU vs 166,691 — Beat the Fly Brain</title>
+
+<!-- ============================================================
+     SOCIAL PREVIEW
+     Crawlers read these from the static HTML and do NOT run our JS, so the
+     two absolute URLs below must be edited by hand once the domain is live.
+     REPLACE https://flybrain.world with your real origin.
+     ============================================================ -->
+<meta property="og:title" content="YOU vs 166,691">
+<meta property="og:description" content="Scientists mapped 166,691 neurons in a fruit fly nervous system. Can you beat its escape circuit?">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://flybrain.world/">
+<meta property="og:image" content="https://flybrain.world/assets/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="YOU vs 166,691">
+<meta name="twitter:description" content="Scientists mapped 166,691 neurons in a fruit fly nervous system. Can you beat its escape circuit?">
+<meta name="twitter:image" content="https://flybrain.world/assets/og-image.png">
+<!-- canonical is also rewritten at runtime from location.origin, so a custom
+     domain works without touching this line -->
+<link rel="canonical" id="canonicalLink" href="/">
+
+<!-- Supabase JS v2. Deferred so it never blocks first paint; the game boots
+     and plays fine if this fails to load (leaderboard just reports offline). -->
+<script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<style>
+  :root{
+    --bg:#050212;
+    --panel:#0c0722;
+    --edge:rgba(124,77,255,.32);
+    --accent1:#ff6ec7; --accent2:#7c4dff; --accent3:#00e5ff;
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-left: env(safe-area-inset-left, 0px);
+    --safe-right: env(safe-area-inset-right, 0px);
+  }
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg);
+    font-family: -apple-system, 'Segoe UI', system-ui, sans-serif;
+    color: #fff;
+    touch-action: none;
+    overscroll-behavior: none;
+    user-select: none;
+  }
+
+  #app {
+    position: relative;
+    height: 100dvh;
+    width: 100vw;
+    display: flex;
+    flex-direction: column;
+    padding-top: var(--safe-top);
+    padding-left: var(--safe-left);
+    padding-right: var(--safe-right);
+  }
+
+  /* ---------- top bar (rank/best/attempt) always outside the arena ---------- */
+  #topbar {
+    position: relative;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 14px 6px;
+    font-size: 12px;
+    color: #9d90d8;
+    /* above #overlay (30) so Leaderboard and the profile chip stay clickable
+       on the start and game-over screens, which is where they are used */
+    z-index: 35;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  #topbar b { color: #fff; }
+  #topbarRight { display:flex; align-items:center; gap:8px; }
+  #rankBadge {
+    font-size:10px; color:#d7d0ff; background:rgba(10,5,30,.56);
+    border:1px solid rgba(124,77,255,.32); border-radius:999px; padding:5px 9px;
+  }
+  #langSelect {
+    background:rgba(10,5,30,.75); color:#fff; border:1px solid rgba(124,77,255,.5);
+    border-radius:10px; padding:5px 7px; font-size:11px; outline:none;
+  }
+
+  #title { text-align: center; padding: 0 0 6px; z-index: 5; }
+  #title h1 {
+    font-size: 17px; letter-spacing: 0.5px;
+    background: linear-gradient(90deg,#ff6ec7,#7c4dff,#00e5ff);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  #title p { font-size: 10.5px; color: #8f84b8; margin-top: 2px; }
+
+  /* ---------- main row: arena (gameplay) + sidebar (brain) ---------- */
+  #layoutRow {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  #arena {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
+    overflow: hidden;
+  }
+  #arena canvas { position:absolute; top:0; left:0; width:100%; height:100%; display:block; }
+
+  #flash { position:absolute; inset:0; background:#fff; opacity:0; pointer-events:none; z-index:8; }
+
+  #reactionPopup {
+    position:absolute; top:36%; left:50%; transform:translate(-50%,-50%);
+    text-align:center; z-index:9; display:none; pointer-events:none;
+  }
+  #reactionPopup h2 { color:#ffcc4d; font-size:20px; text-shadow: 0 0 12px rgba(255,204,77,0.6); }
+  #reactionPopup p { font-size:11.5px; color:#e0d8ff; margin-top:4px; }
+  #reactionPopup .escapeCount { font-size:11px; color:#ff9d7a; margin-top:2px; letter-spacing:.08em; }
+
+  #mobileHint {
+    position:absolute; left:50%; top:14px; transform:translateX(-50%);
+    z-index:6; font-size:11px; color:#b9afe8; background:rgba(10,5,30,.5);
+    border-radius:999px; padding:7px 12px; pointer-events:none;
+    display:flex; align-items:center; gap:8px; transition: opacity .4s ease;
+  }
+  #mobileHint .fingerDot {
+    width:8px; height:8px; border-radius:50%; background:#00e5ff;
+    animation: fingerSlide 1.6s ease-in-out infinite;
+  }
+  @keyframes fingerSlide { 0%,100%{ transform:translateX(-10px); opacity:.4;} 50%{ transform:translateX(10px); opacity:1;} }
+
+  /* ---------- sidebar / brain panel ---------- */
+  #sidebar {
+    position: relative;
+    z-index: 12;
+    background: linear-gradient(180deg,rgba(12,7,34,.92),rgba(7,3,22,.96));
+    border-top: 1px solid var(--edge);
+    backdrop-filter: blur(6px);
+    display: flex;
+    flex-direction: column;
+    flex: 0 0 auto;
+    height: 78px;
+    overflow: hidden;
+    transition: height .28s cubic-bezier(.2,.8,.2,1);
+    padding-bottom: var(--safe-bottom);
+  }
+  #sidebar.expanded { height: min(46vh, 380px); }
+
+  #sidebarHandle {
+    display:flex; align-items:center; justify-content:space-between;
+    padding: 8px 12px 4px; cursor:pointer; flex:0 0 auto;
+  }
+  #sidebarHandle .grip { width:34px; height:4px; border-radius:3px; background:rgba(255,255,255,.18); margin:0 auto; }
+  #sidebarTitleRow { display:flex; align-items:center; justify-content:space-between; width:100%; }
+  #sidebarTitleRow b { font-size:11px; letter-spacing:.08em; color:#e7e0ff; }
+  #sidebarTitleRow span.sub { font-size:9px; color:#9e94c6; }
+  #statusPill {
+    font-size:9.5px; padding:3px 8px; border-radius:999px; letter-spacing:.05em;
+    background:rgba(124,77,255,.18); color:#c9c0ff; border:1px solid rgba(124,77,255,.35);
+    transition: background .2s, color .2s, border-color .2s;
+  }
+  #statusPill.ready { background:rgba(255,80,60,.22); color:#ffb199; border-color:rgba(255,110,90,.5); }
+
+  #sidebarBody { flex:1; min-height:0; display:flex; flex-direction:column; padding: 2px 12px 10px; gap:8px; }
+  #brainStage { position:relative; flex:1; min-height:60px; border-radius:12px; overflow:hidden; background:rgba(124,77,255,.04); }
+  #brainImg { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; opacity:.32; }
+  #brainCanvas { position:absolute; inset:0; width:100%; height:100%; display:block; }
+
+  .neuroLabels { display:flex; justify-content:space-between; font-size:9px; color:#8f84c0; padding: 0 2px; }
+
+  #neuroHud { flex:0 0 auto; }
+  .bar-row { display:flex; align-items:center; gap:6px; margin:3px 0; font-size:10px; color:#c9c0ff; }
+  .bar-row span.label { width: 68px; flex-shrink:0; }
+  .bar-track { flex:1; height:7px; background:rgba(255,255,255,0.08); border-radius:4px; overflow:hidden; }
+  .bar-fill { height:100%; width:0%; border-radius:4px; transition: width 0.08s linear; }
+  #fillLPLC2 { background: linear-gradient(90deg,#00e5ff,#7c4dff); }
+  #fillLC4 { background: linear-gradient(90deg,#ff6ec7,#ff4d6d); }
+  #fillGF { background: linear-gradient(90deg,#ffcc4d,#ff4d4d); }
+
+  #statusLines { display:flex; flex-direction:column; gap:2px; font-size:9.5px; color:#a89fd6; }
+  #statusLines .on { color:#66f4ff; }
+
+  /* ---------- desktop layout: sidebar becomes a fixed side column ---------- */
+  @media (min-width: 880px) {
+    #layoutRow { flex-direction: row; }
+    #arena { flex: 1 1 72%; }
+    #sidebar {
+      flex: 0 0 320px;
+      height: auto !important;
+      max-width: 340px;
+      border-top: none;
+      border-left: 1px solid var(--edge);
+    }
+    #sidebarHandle { cursor: default; }
+    #sidebarHandle .grip { display:none; }
+    #brainStage { min-height: 220px; }
+  }
+  @media (pointer: fine) { #mobileHint { display:none !important; } }
+
+  /* ---------- start / end overlay ---------- */
+  #overlay {
+    position:absolute; inset:0; background:rgba(5,2,18,0.94);
+    display:flex; align-items:center; justify-content:center; z-index:30;
+    padding: 20px;
+  }
+  #overlay[hidden] { display:none; }
+  #overlayCard { max-width: 340px; width:100%; text-align:center; }
+  #overlayCard h2 { font-size: 23px; margin-bottom: 8px; color:#fff; }
+  #overlayCard .accent { background: linear-gradient(90deg,#ff6ec7,#7c4dff,#00e5ff); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+  #overlayCard p { font-size: 13px; color:#c9c0ff; line-height:1.5; margin-bottom: 14px; }
+  #statLine { font-size:12.5px; color:#fff; margin: 10px 0; line-height:1.85; text-align:left; }
+  #statLine b { color:#00e5ff; }
+  .btn {
+    display:inline-block; background: linear-gradient(90deg,#7c4dff,#00e5ff);
+    border:none; padding: 12px 26px; border-radius: 24px; color:#060215;
+    font-weight:700; font-size:14px; cursor:pointer; margin: 6px 4px;
+  }
+  .btn.secondary { background: transparent; border: 1px solid #7c4dff; color:#c9c0ff; }
+  #source-note { font-size: 9px; color:#5f5680; margin-top: 14px; line-height:1.4; }
+
+  #leaderboard {
+    margin-top:10px; text-align:left; font-size:11px;
+    background:rgba(255,255,255,.035); border:1px solid rgba(124,77,255,.22);
+    border-radius:12px; padding:10px 12px;
+  }
+  #leaderboard h3 { font-size:12px; margin-bottom:6px; color:#fff; }
+  .lb-row { display:flex; justify-content:space-between; gap:10px; padding:3px 0; color:#c9c0ff; }
+  .lb-row.me { color:#00e5ff; font-weight:700; }
+
+  /* slot reserved for a real H5 Games interstitial between rounds */
+  #adSlotInterstitial { display:none; }
+
+  /* ---------- production chrome: topbar chips, modals, footer ---------- */
+  .chip {
+    font-size:10px; color:#d7d0ff; background:rgba(10,5,30,.56);
+    border:1px solid rgba(124,77,255,.32); border-radius:999px; padding:5px 9px;
+    cursor:pointer; white-space:nowrap;
+  }
+  .chip:hover { border-color:rgba(124,77,255,.65); color:#fff; }
+  .chip b { color:#fff; }
+  #nickChip[hidden], #lbBtn[hidden] { display:none; }
+
+  .modal {
+    position:fixed; inset:0; z-index:60;
+    background:rgba(4,1,14,.86); backdrop-filter: blur(4px);
+    display:flex; align-items:center; justify-content:center;
+    padding: calc(16px + var(--safe-top)) 16px calc(16px + var(--safe-bottom));
+    overflow-y:auto;
+  }
+  .modal[hidden] { display:none; }
+  .modal-card {
+    width:100%; max-width:380px; max-height:100%;
+    background:linear-gradient(180deg,rgba(16,10,42,.98),rgba(8,4,26,.99));
+    border:1px solid rgba(124,77,255,.38); border-radius:18px;
+    padding:20px 18px; box-shadow:0 18px 50px rgba(0,0,0,.5);
+    display:flex; flex-direction:column; min-height:0;
+  }
+  .modal-card h2 { font-size:20px; margin-bottom:6px; }
+  .modal-card h3 { font-size:13px; letter-spacing:.08em; color:#e7e0ff; margin-bottom:10px; }
+  .modal-card p { font-size:12.5px; color:#c9c0ff; line-height:1.55; margin-bottom:12px; }
+  .modal-foot { font-size:9.5px; color:#6b6192; line-height:1.5; margin-top:12px; }
+  .modal-close { background:none; border:none; color:#8f84b8; font-size:18px; cursor:pointer; padding:0 4px; }
+  .modal-head { display:flex; align-items:center; justify-content:space-between; gap:10px; flex:0 0 auto; }
+
+  .field-label { display:block; font-size:10px; letter-spacing:.08em; color:#9e94c6; margin-bottom:6px; }
+  .text-input {
+    width:100%; background:rgba(255,255,255,.05); color:#fff;
+    border:1px solid rgba(124,77,255,.42); border-radius:12px;
+    padding:12px 14px; font-size:15px; outline:none; font-family:inherit;
+  }
+  .text-input:focus { border-color:#00e5ff; }
+  .form-msg { font-size:11px; margin-top:8px; min-height:15px; }
+  .form-msg.err { color:#ff8a9c; }
+  .form-msg.ok { color:#66f4ff; }
+  .form-msg.muted { color:#8f84b8; }
+
+  /* leaderboard list */
+  #lbList { flex:1; min-height:0; overflow-y:auto; margin:4px -4px 0; padding:0 4px; -webkit-overflow-scrolling:touch; }
+  .lb-head, .lb-entry {
+    display:grid; grid-template-columns: 42px 1fr auto; gap:10px;
+    align-items:center; padding:7px 8px; font-size:12.5px;
+  }
+  .lb-head { font-size:9.5px; letter-spacing:.08em; color:#8f84b8; border-bottom:1px solid rgba(124,77,255,.2); position:sticky; top:0; background:#0b0620; }
+  .lb-entry { color:#c9c0ff; border-radius:8px; }
+  .lb-entry:nth-child(odd) { background:rgba(255,255,255,.025); }
+  .lb-entry .lb-rank { color:#8f84b8; font-variant-numeric:tabular-nums; }
+  .lb-entry .lb-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .lb-entry .lb-score { color:#fff; font-weight:700; font-variant-numeric:tabular-nums; }
+  .lb-entry.me { background:rgba(0,229,255,.10); color:#66f4ff; }
+  .lb-entry.me .lb-rank, .lb-entry.me .lb-score { color:#66f4ff; }
+  .lb-entry.top .lb-rank { color:#ffcc4d; }
+  #lbSelfWrap { flex:0 0 auto; border-top:1px dashed rgba(124,77,255,.35); margin-top:6px; padding-top:6px; }
+  #lbSelfWrap[hidden] { display:none; }
+
+  .stat-grid { display:grid; grid-template-columns:1fr auto; gap:6px 12px; font-size:12.5px; color:#c9c0ff; margin-bottom:14px; }
+  .stat-grid b { color:#fff; }
+
+  /* result-card extras */
+  .result-highlight { color:#ffcc4d; font-weight:700; font-size:12.5px; letter-spacing:.04em; margin:6px 0; }
+  #overlayFoot {
+    position:absolute; left:0; right:0; bottom:calc(10px + var(--safe-bottom));
+    text-align:center; font-size:10px; color:#5f5680; z-index:31;
+  }
+  #overlayFoot button { background:none; border:none; color:#7a6fa8; font-size:10px; cursor:pointer; text-decoration:underline; font-family:inherit; }
+  #overlayFoot button:hover { color:#c9c0ff; }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <div id="topbar">
+    <span><span data-i18n="attempt">Attempt</span> <b id="attemptNum">1</b>/3</span>
+    <div id="topbarRight">
+      <button class="chip" id="lbBtn" onclick="openLeaderboard()" data-i18n="leaderboardBtn">Leaderboard</button>
+      <button class="chip" id="nickChip" onclick="openProfile()" hidden>@<b id="nickChipName"></b></button>
+      <span id="bestTag"><span data-i18n="best">Best</span>: <b id="bestVal">—</b></span>
+      <select id="langSelect" aria-label="Language">
+        <option value="en">EN</option>
+        <option value="pt">PT</option>
+        <option value="zh">中文</option>
+        <option value="es">ES</option>
+        <option value="ru">RU</option>
+      </select>
+    </div>
+  </div>
+
+  <div id="title">
+    <h1>YOU vs 166,691</h1>
+    <p data-i18n="subtitle">166,691 mapped neurons. Catch the fly before its escape circuit fires.</p>
+  </div>
+
+  <div id="layoutRow">
+    <div id="arena">
+      <div id="mobileHint"><span class="fingerDot"></span><span data-i18n="mobileHint">Drag anywhere to move. Release to swat.</span></div>
+      <canvas id="game"></canvas>
+      <div id="flash"></div>
+      <div id="reactionPopup">
+        <h2 id="reactTitle">THE FLY SAW YOU</h2>
+        <p id="reactSub">Reaction: 47ms · Giant Fiber threshold reached</p>
+        <div class="escapeCount" id="reactEscapeCount">ESCAPE 1/3</div>
+      </div>
+    </div>
+
+    <div id="sidebar">
+      <div id="sidebarHandle" onclick="toggleSidebar()">
+        <div class="grip"></div>
+      </div>
+      <div id="sidebarBody">
+        <div id="sidebarTitleRow">
+          <div>
+            <b data-i18n="brainLive">LIVE FLY BRAIN</b><br>
+            <span class="sub" data-i18n="brainSub">visual → decision → escape</span>
+          </div>
+          <span id="statusPill" data-i18n="statusSafe">SAFE</span>
+        </div>
+        <div id="brainStage">
+          <!-- REPLACE WITH OFFICIAL MALECNS/FLYWIRE CONNECTOME ASSET -->
+          <img id="brainImg" src="assets/fly-connectome.png" alt="" draggable="false">
+          <canvas id="brainCanvas"></canvas>
+        </div>
+        <div class="neuroLabels">
+          <span data-i18n="visualInput">VISUAL INPUT</span>
+          <span data-i18n="threatIntegration">THREAT INTEGRATION</span>
+        </div>
+        <div id="neuroHud">
+          <div class="bar-row"><span class="label">LPLC2</span><div class="bar-track"><div class="bar-fill" id="fillLPLC2"></div></div></div>
+          <div class="bar-row"><span class="label">LC4</span><div class="bar-track"><div class="bar-fill" id="fillLC4"></div></div></div>
+          <div class="bar-row"><span class="label">Giant Fiber</span><div class="bar-track"><div class="bar-fill" id="fillGF"></div></div></div>
+        </div>
+        <div id="statusLines">
+          <div><span data-i18n="brainNote">Activity visualization based on simplified escape-circuit dynamics.</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="overlay">
+    <div id="overlayCard">
+      <h2><span class="accent">YOU</span> vs <span class="accent">166,691</span></h2>
+      <p data-i18n="intro">Scientists mapped 166,691 neurons in a fruit fly nervous system. Catch the fly. 3 attempts.</p>
+      <button class="btn" onclick="startGame()" data-i18n="play">Play</button>
+      <div id="source-note" data-i18n="sourceNote">Escape-circuit activity is a simplified computational model based on published connectome research.</div>
+    </div>
+    <div id="overlayFoot">
+      <button onclick="openPrivacy()" data-i18n="privacy">Privacy</button>
+    </div>
+  </div>
+
+  <!-- ---------- nickname ---------- -->
+  <div class="modal" id="nickModal" hidden>
+    <div class="modal-card">
+      <h2><span class="accent">YOU</span> vs <span class="accent">166,691</span></h2>
+      <h3 data-i18n="nickTitle">CHOOSE YOUR NICKNAME</h3>
+      <p data-i18n="nickSub">Your best score will appear on the global leaderboard.</p>
+      <label class="field-label" for="nickInput" data-i18n="nickLabel">Your nickname</label>
+      <input class="text-input" id="nickInput" maxlength="16" autocomplete="off" autocapitalize="off"
+             autocorrect="off" spellcheck="false" placeholder="NeuralHunter">
+      <div class="form-msg" id="nickMsg"></div>
+      <button class="btn" id="nickSubmit" onclick="submitNickname()" data-i18n="nickEnter">ENTER THE ARENA</button>
+      <div class="modal-foot" data-i18n="nickFoot">No account required. Your nickname and scores are public.</div>
+    </div>
+  </div>
+
+  <!-- ---------- leaderboard ---------- -->
+  <div class="modal" id="lbModal" hidden>
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3 data-i18n="globalLeaderboard">GLOBAL LEADERBOARD</h3>
+        <button class="modal-close" onclick="closeModal('lbModal')" aria-label="Close">✕</button>
+      </div>
+      <div class="lb-head">
+        <span>#</span><span data-i18n="lbPlayer">PLAYER</span><span data-i18n="lbScore">SCORE</span>
+      </div>
+      <div id="lbList"></div>
+      <div id="lbSelfWrap" hidden></div>
+    </div>
+  </div>
+
+  <!-- ---------- profile ---------- -->
+  <div class="modal" id="profileModal" hidden>
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3 data-i18n="profileTitle">PROFILE</h3>
+        <button class="modal-close" onclick="closeModal('profileModal')" aria-label="Close">✕</button>
+      </div>
+      <div class="stat-grid" id="profileStats"></div>
+      <button class="btn secondary" onclick="openNicknameModal(true)" data-i18n="changeNick">Change nickname</button>
+    </div>
+  </div>
+
+  <!-- ---------- privacy ---------- -->
+  <div class="modal" id="privacyModal" hidden>
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3 data-i18n="privacyTitle">PRIVACY</h3>
+        <button class="modal-close" onclick="closeModal('privacyModal')" aria-label="Close">✕</button>
+      </div>
+      <p data-i18n="privacyBody">Your nickname and your scores are public and appear on the global leaderboard. Signing in is anonymous: we store a random account id for your browser, with no email, phone or password. Your language and local best score are kept in this browser's localStorage. Advertising is currently served by Monetag. Google AdSense may also be enabled after approval. Ad providers may use cookies or similar technologies to serve and measure ads.</p>
+      <p style="font-size:11px"><a href="privacy.html" style="color:#7c4dff" target="_blank" rel="noopener" data-i18n="privacyFull">Full privacy page</a></p>
+    </div>
+  </div>
+
+  <!-- reserved for a real AdSense H5 Games interstitial once the account is approved -->
+  <div id="adSlotInterstitial"></div>
+
+</div>
+
+<script>
+/* =========================================================================
+   CONFIG
+   ========================================================================= */
+const CONFIG = {
+  MAX_ATTEMPTS: 3,
+  MAX_ESCAPES_PER_ATTEMPT: 3,
+  STRIKE_RADIUS_PAD: 5,
+  FLY_RADIUS_DESKTOP: 24,
+  FLY_RADIUS_MOBILE: 30,
+  SWATTER_START_Y_RATIO: 0.78,
+  FLY_START_Y_RATIO: 0.30,
+  ESCAPE_MIN_DIST: 280,
+  ESCAPE_MAX_DIST: 480,
+  ESCAPE_JITTER_DEG: [20, 35],
+  ESCAPE_DURATION_MS: [180, 280],
+  ESCAPE_MARGIN: 40,
+  RECOVERY_MS: 550,
+  ATTEMPT_END_PAUSE_MS: 900,
+  NEURAL_SMOOTH: 0.22,
+  NEURAL_NOISE: 3,
+  GF_RISE_THRESHOLD: 70,
+  GF_FALL_THRESHOLD: 46,
+  DPR_MAX: 2,
+  // strike wind-up: the swing takes real time, and the neural model keeps
+  // running during it — a rushed swing can still let the fly escape.
+  STRIKE_DURATION_MS: 115,
+  STRIKE_IMPACT_FROM: 0.5,      // no hit resolves before this fraction of the swing
+  STRIKE_ADVANCE_PX: 54,        // how far the racket head travels during the swing
+  // proximity pressure: standing next to the fly is itself a threat, so
+  // creeping in slowly and parking on top of it is not a free win.
+  NEAR_ZONE_PAD: 20,            // critical dwell ring = fly radius + this
+  DWELL_MS: 155,                // time inside that ring before escape is near-certain
+  // the fly's own reaction latency between the circuit firing and the dash —
+  // this is the window a well-timed strike can still beat.
+  REACTION_MS: [14, 30],
+  MICRO_HOP_PX: [10, 25],
+  MICRO_HOP_COOLDOWN_MS: 550,
+  MICRO_HOP_DURATION_MS: 130
+};
+
+// Temporary balancing aid — set true to see live neural/threat numbers on screen.
+const DEBUG_NEURAL = false;
+
+/* =========================================================================
+   PRODUCTION CONFIG  ——  the only values you need to edit before deploying
+   =========================================================================
+   1. SUPABASE_URL / SUPABASE_PUBLISHABLE_KEY: Supabase dashboard →
+      Project Settings → API. Use the publishable ("anon") key ONLY.
+      NEVER paste a service_role key here — it would be public to everyone.
+   2. ADS_CONFIG: leave enabled:false until AdSense approves the account.
+   While the values below are still placeholders the game runs fine and the
+   leaderboard simply reports that it is unavailable.
+   ========================================================================= */
+const SUPABASE_URL = 'https://udysxnwkufnyvlvyitzz.supabase.co';
+const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_eayHIMynBWu9F_yerdyZ-w__J8rI-FF';
+
+const GAME_VERSION = 'v5.0';
+
+const ADS_CONFIG = {
+  enabled: false,                        // flip to true only once approved
+  publisherId: 'ca-pub-5007193182817860',   // AdSense publisher id
+  gamesBetweenInterstitials: 2           // show at most one per N finished games
+};
+let debugEl = null;
+function renderDebugPanel(d){
+  if (!debugEl) {
+    debugEl = document.createElement('div');
+    debugEl.style.cssText = 'position:absolute;left:6px;top:6px;z-index:40;font:10px/1.4 monospace;color:#7CFF9A;background:rgba(0,0,0,.55);padding:6px 8px;border-radius:6px;pointer-events:none;white-space:pre;';
+    document.getElementById('arena').appendChild(debugEl);
+  }
+  debugEl.textContent =
+    `dist ${d.dist.toFixed(0)}  closure ${d.closureSpeed.toFixed(0)}  ttc ${isFinite(d.ttc)?d.ttc.toFixed(2):'inf'}\n` +
+    `lplc2 ${d.lplc2.toFixed(0)}  lc4 ${d.lc4.toFixed(0)}  instant ${d.instant.toFixed(0)}  gf ${d.gf.toFixed(0)}\n` +
+    `exposure ${(d.exposure||0).toFixed(0)}  state ${d.state}`;
+}
+
+/* =========================================================================
+   I18N
+   ========================================================================= */
+const I18N = {
+  en: {
+    brainLive:"LIVE FLY BRAIN", brainSub:"visual → decision → escape",
+    attempt:"Attempt", best:"Best", rank:"Global rank",
+    subtitle:"166,691 mapped neurons. Catch the fly before its escape circuit fires.",
+    intro:"Scientists mapped 166,691 neurons in a fruit fly nervous system. Catch the fly. 3 attempts.",
+    play:"Play",
+    sourceNote:"Escape-circuit activity is a simplified computational model based on published connectome research.",
+    brainNote:"Activity visualization based on simplified escape-circuit dynamics.",
+    mobileHint:"Drag anywhere to move. Release to swat.",
+    visualInput:"VISUAL INPUT", threatIntegration:"THREAT INTEGRATION",
+    statusSafe:"SAFE", statusReady:"ESCAPE READY",
+    saw:"THE FLY SAW YOU", caught:"YOU CAUGHT THE FLY", brainWon:"THE FLY BRAIN WON",
+    again:"Play again", retry:"Try again", share:"Share", score:"Score", record:"Best",
+    neurons:"166,691 mapped neurons", rankLabel:"Global rank",
+    caughtDesc:"You got close enough before the escape circuit fired.",
+    lostDesc:"Three attempts used. The escape circuit detected you every time.",
+    leaderboard:"Top players", you:"YOU", offline:"Preview rank",
+    copied:"Share text copied.",
+    escapesCaused:"Escapes caused", closestApproach:"Closest approach",
+    giantFiberPeak:"Giant Fiber peak", timeLabel:"Time",
+    escapeOf:"ESCAPE {n}/{max}", outOfEscapes:"OUT OF ESCAPES",
+    leaderboardBtn:"Leaderboard", globalLeaderboard:"GLOBAL LEADERBOARD",
+    lbPlayer:"PLAYER", lbScore:"SCORE", lbEmpty:"No scores yet. Be the first.",
+    lbUnavailable:"Leaderboard temporarily unavailable.", lbLoading:"Loading…",
+    nickTitle:"CHOOSE YOUR NICKNAME", nickSub:"Your best score will appear on the global leaderboard.",
+    nickLabel:"Your nickname", nickEnter:"ENTER THE ARENA",
+    nickFoot:"No account required. Your nickname and scores are public.",
+    nickTaken:"This nickname is already taken.",
+    nickInvalid:"Use 3–16 characters — letters, numbers or _",
+    nickSaving:"Saving…", nickError:"Could not save your nickname. Try again.",
+    changeNick:"Change nickname", profileTitle:"PROFILE", gamesPlayed:"Games played",
+    personalBest:"Personal best", globalRank:"Global rank",
+    newBest:"NEW PERSONAL BEST", movedUp:"You moved up {n} places",
+    submitting:"Submitting score…", submitFailed:"Score not submitted.",
+    retrySubmit:"Retry", offlineMode:"Offline — scores are not saved.",
+    privacy:"Privacy", privacyTitle:"PRIVACY", privacyFull:"Full privacy page",
+    privacyBody:"Your nickname and your scores are public and appear on the global leaderboard. Signing in is anonymous: we store a random account id for your browser, with no email, phone or password. Your language and local best score are kept in this browser's localStorage. Advertising is currently served by Monetag. Google AdSense may also be enabled after approval. Ad providers may use cookies or similar technologies to serve and measure ads."
+  },
+  pt: {
+    brainLive:"CÉREBRO DA MOSCA AO VIVO", brainSub:"visual → decisão → fuga",
+    attempt:"Tentativa", best:"Recorde", rank:"Ranking global",
+    subtitle:"166.691 neurônios mapeados. Pegue a mosca antes que o circuito de fuga dispare.",
+    intro:"Cientistas mapearam 166.691 neurônios do sistema nervoso de uma mosca-das-frutas. Pegue a mosca. 3 tentativas.",
+    play:"Jogar",
+    sourceNote:"A atividade do circuito de fuga é um modelo computacional simplificado baseado em pesquisa de connectoma publicada.",
+    brainNote:"Visualização de atividade baseada em dinâmica simplificada do circuito de fuga.",
+    mobileHint:"Arraste em qualquer lugar para mover. Solte para bater.",
+    visualInput:"ENTRADA VISUAL", threatIntegration:"INTEGRAÇÃO DE AMEAÇA",
+    statusSafe:"SEGURA", statusReady:"PRONTA PARA FUGIR",
+    saw:"A MOSCA VIU VOCÊ", caught:"VOCÊ PEGOU A MOSCA", brainWon:"O CÉREBRO DELA VENCEU",
+    again:"Jogar de novo", retry:"Tentar de novo", share:"Compartilhar", score:"Pontuação", record:"Recorde",
+    neurons:"166.691 neurônios mapeados", rankLabel:"Ranking global",
+    caughtDesc:"Você chegou perto o bastante antes do circuito de fuga disparar.",
+    lostDesc:"Três tentativas usadas. O circuito de fuga te detectou toda vez.",
+    leaderboard:"Top jogadores", you:"VOCÊ", offline:"Ranking preview",
+    copied:"Texto copiado.",
+    escapesCaused:"Fugas provocadas", closestApproach:"Aproximação mínima",
+    giantFiberPeak:"Pico do Giant Fiber", timeLabel:"Tempo",
+    escapeOf:"FUGA {n}/{max}", outOfEscapes:"SEM MAIS FUGAS",
+    leaderboardBtn:"Ranking", globalLeaderboard:"RANKING GLOBAL",
+    lbPlayer:"JOGADOR", lbScore:"PONTOS", lbEmpty:"Ainda sem pontuações. Seja o primeiro.",
+    lbUnavailable:"Ranking temporariamente indisponível.", lbLoading:"Carregando…",
+    nickTitle:"ESCOLHA SEU APELIDO", nickSub:"Seu melhor score vai aparecer no ranking global.",
+    nickLabel:"Seu apelido", nickEnter:"ENTRAR NA ARENA",
+    nickFoot:"Sem cadastro. Seu apelido e seus scores são públicos.",
+    nickTaken:"Esse apelido já está em uso.",
+    nickInvalid:"Use 3–16 caracteres — letras, números ou _",
+    nickSaving:"Salvando…", nickError:"Não consegui salvar o apelido. Tente de novo.",
+    changeNick:"Trocar apelido", profileTitle:"PERFIL", gamesPlayed:"Partidas jogadas",
+    personalBest:"Recorde pessoal", globalRank:"Ranking global",
+    newBest:"NOVO RECORDE PESSOAL", movedUp:"Você subiu {n} posições",
+    submitting:"Enviando score…", submitFailed:"Score não enviado.",
+    retrySubmit:"Tentar de novo", offlineMode:"Offline — scores não são salvos.",
+    privacy:"Privacidade", privacyTitle:"PRIVACIDADE", privacyFull:"Página completa de privacidade",
+    privacyBody:"Seu apelido e seus scores são públicos e aparecem no ranking global. O login é anônimo: guardamos um id de conta aleatório para o seu navegador, sem e-mail, telefone ou senha. Seu idioma e seu recorde local ficam no localStorage deste navegador. A publicidade é exibida atualmente pela Monetag. O Google AdSense também poderá ser ativado após aprovação. Provedores de anúncios podem usar cookies ou tecnologias semelhantes para exibir e medir anúncios."
+  },
+  zh: {
+    brainLive:"果蝇大脑实时活动", brainSub:"视觉 → 决策 → 逃逸",
+    attempt:"尝试", best:"最佳", rank:"全球排名",
+    subtitle:"166,691 个已绘制神经元。赶在逃逸回路触发前抓住果蝇。",
+    intro:"科学家绘制了果蝇神经系统中的 166,691 个神经元。抓住果蝇。3 次机会。",
+    play:"开始",
+    sourceNote:"逃逸回路活动是基于已发表连接组研究的简化计算模型。",
+    brainNote:"活动可视化基于简化的逃逸回路动态模型。",
+    mobileHint:"在任意位置拖动来移动，松手即可击打。",
+    visualInput:"视觉输入", threatIntegration:"威胁整合",
+    statusSafe:"安全", statusReady:"准备逃逸",
+    saw:"果蝇发现你了", caught:"你抓到果蝇了", brainWon:"果蝇大脑赢了",
+    again:"再玩一次", retry:"重试", share:"分享", score:"得分", record:"最佳",
+    neurons:"166,691 个已绘制神经元", rankLabel:"全球排名",
+    caughtDesc:"你在逃逸回路触发前成功接近并击中了它。",
+    lostDesc:"3 次机会已用完。每次都被逃逸回路发现。",
+    leaderboard:"排行榜", you:"你", offline:"预览排名",
+    copied:"分享文本已复制。",
+    escapesCaused:"引发的逃逸次数", closestApproach:"最近距离",
+    giantFiberPeak:"Giant Fiber 峰值", timeLabel:"用时",
+    escapeOf:"逃逸 {n}/{max}", outOfEscapes:"逃逸次数已用完",
+    leaderboardBtn:"排行榜", globalLeaderboard:"全球排行榜",
+    lbPlayer:"玩家", lbScore:"得分", lbEmpty:"还没有成绩，来做第一个。",
+    lbUnavailable:"排行榜暂时不可用。", lbLoading:"加载中…",
+    nickTitle:"选择你的昵称", nickSub:"你的最佳成绩将出现在全球排行榜上。",
+    nickLabel:"你的昵称", nickEnter:"进入竞技场",
+    nickFoot:"无需注册。你的昵称和成绩是公开的。",
+    nickTaken:"这个昵称已被使用。",
+    nickInvalid:"请使用 3–16 个字符：字母、数字或 _",
+    nickSaving:"保存中…", nickError:"无法保存昵称，请重试。",
+    changeNick:"修改昵称", profileTitle:"个人资料", gamesPlayed:"已玩局数",
+    personalBest:"个人最佳", globalRank:"全球排名",
+    newBest:"个人新纪录", movedUp:"你上升了 {n} 位",
+    submitting:"正在提交成绩…", submitFailed:"成绩未提交。",
+    retrySubmit:"重试", offlineMode:"离线 — 成绩不会保存。",
+    privacy:"隐私", privacyTitle:"隐私", privacyFull:"完整隐私说明",
+    privacyBody:"你的昵称和成绩是公开的，会显示在全球排行榜上。登录是匿名的：我们为你的浏览器保存一个随机账户 id，不涉及邮箱、电话或密码。语言和本地最佳成绩保存在浏览器 localStorage 中。目前广告由 Monetag 提供；Google AdSense 获批后也可能启用。广告提供商可能使用 Cookie 或类似技术来投放和衡量广告。"
+  },
+  es: {
+    brainLive:"CEREBRO DE MOSCA EN VIVO", brainSub:"visual → decisión → escape",
+    attempt:"Intento", best:"Récord", rank:"Ranking global",
+    subtitle:"166.691 neuronas mapeadas. Atrapa la mosca antes de que se active su circuito de escape.",
+    intro:"Científicos mapearon 166.691 neuronas del sistema nervioso de una mosca de la fruta. Atrapa la mosca. 3 intentos.",
+    play:"Jugar",
+    sourceNote:"La actividad del circuito de escape es un modelo computacional simplificado basado en investigación de conectoma publicada.",
+    brainNote:"Visualización de actividad basada en dinámica simplificada del circuito de escape.",
+    mobileHint:"Arrastra en cualquier lugar para mover. Suelta para golpear.",
+    visualInput:"ENTRADA VISUAL", threatIntegration:"INTEGRACIÓN DE AMENAZA",
+    statusSafe:"SEGURA", statusReady:"LISTA PARA ESCAPAR",
+    saw:"LA MOSCA TE VIO", caught:"ATRAPASTE LA MOSCA", brainWon:"GANÓ EL CEREBRO DE LA MOSCA",
+    again:"Jugar otra vez", retry:"Intentar de nuevo", share:"Compartir", score:"Puntuación", record:"Récord",
+    neurons:"166.691 neuronas mapeadas", rankLabel:"Ranking global",
+    caughtDesc:"Llegaste lo bastante cerca antes de que se activara el circuito de escape.",
+    lostDesc:"Usaste los 3 intentos. El circuito de escape te detectó cada vez.",
+    leaderboard:"Mejores jugadores", you:"TÚ", offline:"Ranking preview",
+    copied:"Texto copiado.",
+    escapesCaused:"Escapes provocados", closestApproach:"Aproximación más cercana",
+    giantFiberPeak:"Pico de Giant Fiber", timeLabel:"Tiempo",
+    escapeOf:"ESCAPE {n}/{max}", outOfEscapes:"SIN MÁS ESCAPES",
+    leaderboardBtn:"Ranking", globalLeaderboard:"RANKING GLOBAL",
+    lbPlayer:"JUGADOR", lbScore:"PUNTOS", lbEmpty:"Aún no hay puntuaciones. Sé el primero.",
+    lbUnavailable:"Ranking no disponible por ahora.", lbLoading:"Cargando…",
+    nickTitle:"ELIGE TU APODO", nickSub:"Tu mejor puntuación aparecerá en el ranking global.",
+    nickLabel:"Tu apodo", nickEnter:"ENTRAR EN LA ARENA",
+    nickFoot:"Sin cuenta. Tu apodo y tus puntuaciones son públicos.",
+    nickTaken:"Ese apodo ya está en uso.",
+    nickInvalid:"Usa 3–16 caracteres — letras, números o _",
+    nickSaving:"Guardando…", nickError:"No se pudo guardar tu apodo. Inténtalo de nuevo.",
+    changeNick:"Cambiar apodo", profileTitle:"PERFIL", gamesPlayed:"Partidas jugadas",
+    personalBest:"Récord personal", globalRank:"Ranking global",
+    newBest:"NUEVO RÉCORD PERSONAL", movedUp:"Subiste {n} puestos",
+    submitting:"Enviando puntuación…", submitFailed:"Puntuación no enviada.",
+    retrySubmit:"Reintentar", offlineMode:"Sin conexión — no se guardan puntuaciones.",
+    privacy:"Privacidad", privacyTitle:"PRIVACIDAD", privacyFull:"Página completa de privacidad",
+    privacyBody:"Tu apodo y tus puntuaciones son públicos y aparecen en el ranking global. El acceso es anónimo: guardamos un id de cuenta aleatorio para tu navegador, sin correo, teléfono ni contraseña. Tu idioma y tu récord local se guardan en el localStorage de este navegador. Actualmente Monetag sirve publicidad. Google AdSense también podrá activarse tras su aprobación. Los proveedores de anuncios pueden usar cookies o tecnologías similares para servir y medir anuncios."
+  },
+  ru: {
+    brainLive:"МОЗГ МУХИ В РЕАЛЬНОМ ВРЕМЕНИ", brainSub:"зрение → решение → побег",
+    attempt:"Попытка", best:"Рекорд", rank:"Мировой рейтинг",
+    subtitle:"166 691 картированный нейрон. Поймай муху до срабатывания цепи побега.",
+    intro:"Учёные картировали 166 691 нейрон нервной системы плодовой мушки. Поймай муху. 3 попытки.",
+    play:"Играть",
+    sourceNote:"Активность цепи побега — упрощённая вычислительная модель на основе опубликованных данных коннектома.",
+    brainNote:"Визуализация активности основана на упрощённой динамике цепи побега.",
+    mobileHint:"Тяни в любом месте, чтобы двигать. Отпусти для удара.",
+    visualInput:"ЗРИТЕЛЬНЫЙ ВХОД", threatIntegration:"ИНТЕГРАЦИЯ УГРОЗЫ",
+    statusSafe:"БЕЗОПАСНО", statusReady:"ГОТОВА К ПОБЕГУ",
+    saw:"МУХА ТЕБЯ ЗАМЕТИЛА", caught:"ТЫ ПОЙМАЛ МУХУ", brainWon:"МОЗГ МУХИ ПОБЕДИЛ",
+    again:"Играть снова", retry:"Ещё раз", share:"Поделиться", score:"Счёт", record:"Рекорд",
+    neurons:"166 691 картированный нейрон", rankLabel:"Мировой рейтинг",
+    caughtDesc:"Ты подобрался достаточно близко до срабатывания цепи побега.",
+    lostDesc:"Все 3 попытки использованы. Цепь побега замечала тебя каждый раз.",
+    leaderboard:"Лучшие игроки", you:"ТЫ", offline:"Предпросмотр рейтинга",
+    copied:"Текст скопирован.",
+    escapesCaused:"Спровоцировано побегов", closestApproach:"Ближайшее приближение",
+    giantFiberPeak:"Пик Giant Fiber", timeLabel:"Время",
+    escapeOf:"ПОБЕГ {n}/{max}", outOfEscapes:"ПОБЕГИ ЗАКОНЧИЛИСЬ",
+    leaderboardBtn:"Рейтинг", globalLeaderboard:"МИРОВОЙ РЕЙТИНГ",
+    lbPlayer:"ИГРОК", lbScore:"СЧЁТ", lbEmpty:"Пока нет результатов. Будь первым.",
+    lbUnavailable:"Рейтинг временно недоступен.", lbLoading:"Загрузка…",
+    nickTitle:"ВЫБЕРИ НИК", nickSub:"Твой лучший результат попадёт в мировой рейтинг.",
+    nickLabel:"Твой ник", nickEnter:"НА АРЕНУ",
+    nickFoot:"Без регистрации. Ник и результаты публичны.",
+    nickTaken:"Этот ник уже занят.",
+    nickInvalid:"3–16 символов — буквы, цифры или _",
+    nickSaving:"Сохранение…", nickError:"Не удалось сохранить ник. Попробуй снова.",
+    changeNick:"Сменить ник", profileTitle:"ПРОФИЛЬ", gamesPlayed:"Сыграно игр",
+    personalBest:"Личный рекорд", globalRank:"Место в рейтинге",
+    newBest:"НОВЫЙ ЛИЧНЫЙ РЕКОРД", movedUp:"Ты поднялся на {n} позиций",
+    submitting:"Отправка счёта…", submitFailed:"Счёт не отправлен.",
+    retrySubmit:"Повторить", offlineMode:"Оффлайн — результаты не сохраняются.",
+    privacy:"Конфиденциальность", privacyTitle:"КОНФИДЕНЦИАЛЬНОСТЬ", privacyFull:"Полная страница",
+    privacyBody:"Твой ник и результаты публичны и показываются в мировом рейтинге. Вход анонимный: мы храним случайный id аккаунта для браузера — без e-mail, телефона и пароля. Язык и локальный рекорд хранятся в localStorage. Сейчас реклама показывается через Monetag. После одобрения также может быть включён Google AdSense. Рекламные провайдеры могут использовать cookies или похожие технологии для показа и измерения рекламы."
+  }
+};
+
+let currentLang = localStorage.getItem('yv_lang') || 'en';
+const langSelect = document.getElementById('langSelect');
+langSelect.value = currentLang;
+
+function tr(k, vars){
+  let s = (I18N[currentLang] && I18N[currentLang][k]) || I18N.en[k] || k;
+  if (vars) Object.keys(vars).forEach(v => { s = s.replace('{'+v+'}', vars[v]); });
+  return s;
+}
+
+function applyLanguage(){
+  document.documentElement.lang = currentLang === 'pt' ? 'pt-BR' : currentLang;
+  document.querySelectorAll('[data-i18n]').forEach(el=>{
+    el.textContent = tr(el.dataset.i18n);
+  });
+  langSelect.value = currentLang;
+}
+langSelect.addEventListener('change', e=>{
+  currentLang = e.target.value;
+  localStorage.setItem('yv_lang', currentLang);
+  applyLanguage();
+});
+
+/* =========================================================================
+   STATE
+   ========================================================================= */
+const GameState = {
+  IDLE: 'IDLE',
+  PLAYING: 'PLAYING',
+  STRIKING: 'STRIKING',
+  ESCAPING: 'ESCAPING',
+  RECOVERING: 'RECOVERING',
+  CAUGHT: 'CAUGHT',
+  ATTEMPT_END: 'ATTEMPT_END',
+  GAME_OVER: 'GAME_OVER'
+};
+let gameState = GameState.IDLE;
+
+const state = {
+  attempt: 1,
+  escapesUsed: 0,
+  escapesTotal: 0,
+  minDist: Infinity,
+  peakGF: 0,
+  runStart: 0,
+  best: Number(localStorage.getItem('yv_best') || 0)
+};
+
+const neural = {
+  lplc2: 0, lc4: 0, gf: 0, instant: 0, gfLatched: false, lastDist: null,
+  nearExposure: 0,   // integrates time spent close to the fly, decays when backing off
+  dwell: 0,          // ms spent inside the critical ring around the fly
+  prevGf: 0
+};
+
+let fly = null;
+const swatter = { x:0, y:0, vx:0, vy:0, tilt:0 };
+// Swing direction comes from the player's own recent racket movement — never
+// from the fly's position. Aim badly and the swing misses.
+const aimDir = { x: 0, y: -1 };
+// active strike wind-up: null when idle, otherwise { startTime, duration, impactChecked, dirX, dirY, originX, originY }
+let strike = null;
+// The circuit firing does not teleport the fly instantly: it schedules the dash
+// one reaction time later, which is the window a well-timed strike can beat.
+let pendingEscape = null;
+
+let W = 0, H = 0, DPR = 1, BW = 0, BH = 0;
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const brainCanvas = document.getElementById('brainCanvas');
+const bctx = brainCanvas.getContext('2d');
+
+/* =========================================================================
+   ASSETS
+   ========================================================================= */
+const assets = { fly: { img: new Image(), ready:false }, brain: { img: document.getElementById('brainImg'), ready:false } };
+assets.fly.img.onload = () => { assets.fly.ready = true; };
+assets.fly.img.onerror = () => { assets.fly.ready = false; };
+assets.fly.img.src = 'assets/fly.png';
+
+assets.brain.img.onload = () => { assets.brain.ready = true; };
+assets.brain.img.onerror = () => { assets.brain.ready = false; assets.brain.img.style.display = 'none'; };
+
+/* =========================================================================
+   RESIZE / LAYOUT
+   ========================================================================= */
+function resize() {
+  DPR = Math.min(window.devicePixelRatio || 1, CONFIG.DPR_MAX);
+  const prevW = W, prevH = H;
+  W = canvas.clientWidth; H = canvas.clientHeight;
+  if (W > 0 && H > 0) {
+    canvas.width = Math.round(W * DPR); canvas.height = Math.round(H * DPR);
+    ctx.setTransform(DPR,0,0,DPR,0,0);
+  }
+  BW = brainCanvas.clientWidth; BH = brainCanvas.clientHeight;
+  if (BW > 0 && BH > 0) {
+    brainCanvas.width = Math.round(BW * DPR); brainCanvas.height = Math.round(BH * DPR);
+    bctx.setTransform(DPR,0,0,DPR,0,0);
+  }
+  // keep fly/swatter inside the new bounds instead of resetting their position
+  if (prevW && prevH && W && H) {
+    const sx = W / prevW, sy = H / prevH;
+    if (fly) { fly.x = clamp(fly.x * sx, 30, W-30); fly.y = clamp(fly.y * sy, 30, H-30); }
+    swatter.x = clamp(swatter.x * sx, 20, W-20);
+    swatter.y = clamp(swatter.y * sy, 20, H-20);
+  }
+}
+window.addEventListener('resize', resize);
+window.addEventListener('orientationchange', () => setTimeout(resize, 60));
+
+function clamp(v, a, b){ return Math.max(a, Math.min(b, v)); }
+function flyRadius(){ return (Math.min(W,H) < 520 ? CONFIG.FLY_RADIUS_MOBILE : CONFIG.FLY_RADIUS_DESKTOP); }
+
+function toggleSidebar(){
+  document.getElementById('sidebar').classList.toggle('expanded');
+}
+
+/* =========================================================================
+   INPUT
+   desktop (mouse): absolute — the swatter follows the cursor directly.
+   mobile (touch): relative "trackpad" drag — touchstart never warps the
+   swatter to the finger; only subsequent deltas move it, so the finger
+   never has to sit on top of the swatter or the fly.
+   ========================================================================= */
+const input = {
+  isCoarse: window.matchMedia('(pointer: coarse)').matches,
+  dragging: false,
+  activeTouchId: null,
+  prevTouch: { x:0, y:0 },
+  hintDismissed: false
+};
+
+function pointerPosFromEvent(e){
+  const rect = canvas.getBoundingClientRect();
+  return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+}
+
+function dismissMobileHint(){
+  if (input.hintDismissed) return;
+  input.hintDismissed = true;
+  const hint = document.getElementById('mobileHint');
+  hint.style.opacity = '0';
+  setTimeout(()=>{ hint.style.display='none'; }, 420);
+}
+
+function canAcceptInput(){
+  return gameState === GameState.PLAYING;
+}
+
+// --- mouse (desktop, absolute) ---
+canvas.addEventListener('mousemove', e => {
+  if (!canAcceptInput()) return;
+  const p = pointerPosFromEvent(e);
+  swatter.x = p.x; swatter.y = p.y;
+});
+canvas.addEventListener('mousedown', e => {
+  if (!canAcceptInput()) return;
+  const p = pointerPosFromEvent(e);
+  swatter.x = p.x; swatter.y = p.y;
+});
+canvas.addEventListener('mouseup', () => {
+  if (!canAcceptInput()) return;
+  performStrike();
+});
+
+// --- touch (mobile, relative trackpad) ---
+canvas.addEventListener('touchstart', e => {
+  if (!canAcceptInput()) { return; }
+  e.preventDefault();
+  dismissMobileHint();
+  const t = e.changedTouches[0];
+  input.activeTouchId = t.identifier;
+  const rect = canvas.getBoundingClientRect();
+  input.prevTouch = { x: t.clientX - rect.left, y: t.clientY - rect.top };
+  input.dragging = true;
+  // NOTE: swatter position is intentionally NOT set here — no teleport.
+}, { passive:false });
+
+canvas.addEventListener('touchmove', e => {
+  if (!input.dragging || !canAcceptInput()) return;
+  e.preventDefault();
+  const t = findTouch(e.changedTouches, input.activeTouchId);
+  if (!t) return;
+  const rect = canvas.getBoundingClientRect();
+  const cur = { x: t.clientX - rect.left, y: t.clientY - rect.top };
+  const dx = cur.x - input.prevTouch.x;
+  const dy = cur.y - input.prevTouch.y;
+  swatter.x = clamp(swatter.x + dx, 22, W-22);
+  swatter.y = clamp(swatter.y + dy, 22, H-22);
+  input.prevTouch = cur;
+}, { passive:false });
+
+canvas.addEventListener('touchend', e => {
+  if (!input.dragging) return;
+  e.preventDefault();
+  const t = findTouch(e.changedTouches, input.activeTouchId);
+  input.dragging = false;
+  input.activeTouchId = null;
+  if (!t) return; // stray event for a different touch
+  if (!canAcceptInput()) return;
+  performStrike();
+  if (navigator.vibrate) { try { navigator.vibrate(15); } catch(_) {} }
+}, { passive:false });
+
+canvas.addEventListener('touchcancel', () => {
+  input.dragging = false;
+  input.activeTouchId = null;
+}, { passive:false });
+
+function findTouch(list, id){
+  for (let i=0;i<list.length;i++) if (list[i].identifier === id) return list[i];
+  return null;
+}
+
+/* =========================================================================
+   NEURAL MODEL
+   Not a fixed weighted sum: exponential smoothing, decay, hysteresis on the
+   Giant Fiber threshold, small controlled noise, and a post-escape cooldown
+   so the same approach doesn't instantly re-trigger.
+   ========================================================================= */
+let recoveryUntil = 0;
+
+// The fly's visible position, including its idle drift — the hitbox and the
+// brain both use this, so what the player sees is what they can hit.
+function flyPos(){
+  return fly ? { x: fly.x + fly.ox, y: fly.y + fly.oy } : { x: 0, y: 0 };
+}
+
+// What the fly is actually reacting to. During the swing that is the real
+// animated racket head, not the input pivot — so the brain "sees" the strike
+// coming at it, and the swing itself generates looming.
+function getThreatPosition(){
+  if (gameState === GameState.STRIKING && strike) {
+    const progress = clamp((performance.now() - strike.startTime) / strike.duration, 0, 1);
+    return strikeHeadCenter(progress);
+  }
+  return { x: swatter.x, y: swatter.y };
+}
+
+function updateNeuralModel(dt){
+  if (!fly) return;
+  const threat = getThreatPosition();
+  const fp = flyPos();
+  const dist = Math.hypot(threat.x - fp.x, threat.y - fp.y);
+  state.minDist = Math.min(state.minDist, dist);
+
+  let closureSpeed = 0;
+  if (neural.lastDist !== null) closureSpeed = (neural.lastDist - dist) / Math.max(dt, 0.001);
+  neural.lastDist = dist;
+
+  const proximity = clamp(1 - dist / 280, 0, 1);
+  const approach = clamp(closureSpeed / 520, 0, 1.4);
+  const lateral = clamp(Math.abs(threat.x - fp.x) / 200, 0, 1);
+
+  const noise = () => (Math.random() - 0.5) * CONFIG.NEURAL_NOISE;
+  const rawLPLC2 = clamp(proximity * 115 + noise(), 0, 100);
+  const rawLC4 = clamp(approach * 92 + lateral * proximity * 16 + noise(), 0, 100);
+
+  neural.lplc2 += (rawLPLC2 - neural.lplc2) * CONFIG.NEURAL_SMOOTH;
+  neural.lc4 += (rawLC4 - neural.lc4) * CONFIG.NEURAL_SMOOTH;
+
+  // Fast looming / time-to-contact channel. LPLC2/LC4 above are deliberately
+  // smoothed over several frames — a mouse that jumps straight onto the fly
+  // and clicks would otherwise land before that smoothing ever caught up.
+  // This channel reacts within a frame or two of a close, fast approach.
+  // Require real closing speed (not just "still drifting") before time-to-
+  // contact even applies — otherwise ttc trivially shrinks near the fly
+  // even for a slow, deliberate approach, since ttc = distance / speed.
+  const ttc = closureSpeed > 150 ? dist / closureSpeed : Infinity;
+  let instantThreatRaw = 0;
+  if (ttc < 0.18) instantThreatRaw += 40;
+  if (ttc < 0.09) instantThreatRaw += 30;
+  if (dist < 26) instantThreatRaw += 10; // small point-blank kicker, not enough alone to cross threshold
+  instantThreatRaw = clamp(instantThreatRaw + noise()*1.5, 0, 100);
+  // fast attack / slow decay envelope: a single-frame closing-speed spike
+  // (a quick flick of the mouse straight at the fly) needs to punch through
+  // immediately and then hold for a few frames — a plain EMA would let it
+  // collapse back down the very next frame once the mouse stops moving.
+  if (instantThreatRaw > neural.instant) neural.instant += (instantThreatRaw - neural.instant) * 0.9;
+  else neural.instant += (instantThreatRaw - neural.instant) * 0.12;
+
+  // Proximity pressure. The looming channel above is speed-gated on purpose,
+  // which is what lets a careful approach get close — but on its own that
+  // made "creep in at 5px/s, park on the fly, release" a guaranteed win.
+  // Sitting near the fly now costs time: exposure integrates while close and
+  // decays while backing off, so closing distance is a resource, not a state.
+  if (dist < 50) neural.nearExposure += dt * 150;
+  else if (dist < 75) neural.nearExposure += dt * 95;
+  else if (dist < 110) neural.nearExposure += dt * 62;
+  else if (dist < 130) neural.nearExposure += dt * 25;
+  else neural.nearExposure -= dt * 50;
+  neural.nearExposure = clamp(neural.nearExposure, 0, 100);
+
+  // Critical ring + dwell timer: crossing it for a single frame is harmless,
+  // but lingering inside it makes escape near-certain. This is what kills
+  // "touch the fly slowly, stop, release" outright.
+  const criticalZone = fly.r + CONFIG.NEAR_ZONE_PAD;
+  if (dist < criticalZone) neural.dwell += dt * 1000;
+  else neural.dwell = Math.max(0, neural.dwell - dt * 1500);
+  const dwellPressure = clamp((neural.dwell / CONFIG.DWELL_MS) * 100, 0, 100);
+  const proximityPressure = Math.max(neural.nearExposure, dwellPressure);
+
+  // difficulty ramps slightly with each attempt used
+  const riseThreshold = CONFIG.GF_RISE_THRESHOLD - (state.attempt - 1) * 3;
+
+  let cooldown = 1;
+  if (performance.now() < recoveryUntil) {
+    const remain = (recoveryUntil - performance.now()) / CONFIG.RECOVERY_MS;
+    cooldown = clamp(1 - remain, 0.15, 1);
+  }
+
+  const drive = clamp(neural.lplc2 * 0.18 + neural.lc4 * 0.20 + neural.instant * 0.58 + proximityPressure * 0.78, 0, 100) * cooldown;
+  const target = neural.gfLatched ? Math.max(drive, 55) : drive;
+  // Giant Fiber itself gets a fast-attack / slow-release envelope: a brief
+  // spike (the final instant before contact) needs to cross the threshold
+  // within the same couple of frames, and then hold — not collapse the
+  // moment the racket stops moving right as it reaches the fly, which is
+  // exactly the highest-risk instant of the whole approach.
+  if (target > neural.gf) neural.gf += (target - neural.gf) * 0.75;
+  else neural.gf += (target - neural.gf) * 0.10;
+  neural.gf = clamp(neural.gf, 0, 100);
+  state.peakGF = Math.max(state.peakGF, neural.gf);
+
+  // hysteresis: once past rise threshold, stays "latched" until it falls
+  // below the (lower) fall threshold, avoiding flicker around the edge.
+  if (!neural.gfLatched && neural.gf > riseThreshold) neural.gfLatched = true;
+  if (neural.gfLatched && neural.gf < CONFIG.GF_FALL_THRESHOLD) neural.gfLatched = false;
+
+  setBars(neural.lplc2, neural.lc4, neural.gf);
+  updateStatusPill(neural.gf > riseThreshold - 12);
+  if (DEBUG_NEURAL) renderDebugPanel({ dist, closureSpeed, ttc, lplc2: neural.lplc2, lc4: neural.lc4, instant: neural.instant, gf: neural.gf, exposure: proximityPressure, state: gameState });
+
+  // A rising-but-not-yet-escaping threat makes the fly shuffle a little, so
+  // the player can't spend several calm seconds lining the racket up.
+  maybeMicroHop(proximityPressure, riseThreshold, threat);
+  neural.prevGf = neural.gf;
+
+  // Two escape paths: the slow-integrated Giant Fiber threshold above, and a
+  // direct reflex path off the raw looming channel. The reflex path exists
+  // because a single-frame "mouse arrives on the fly at full speed" event
+  // only lives for one frame before the racket stops moving — by the time
+  // it has propagated through GF's own smoothing the moment has already
+  // passed. This is what actually stops the "teleport onto the fly and
+  // click" exploit the fix was written for.
+  const reflexTrigger = neural.instant > (riseThreshold - 3);
+  if ((gameState === GameState.PLAYING || gameState === GameState.STRIKING) && (neural.gf > riseThreshold || reflexTrigger)) {
+    scheduleEscape();
+  }
+}
+
+// The circuit fires, then the muscles follow one reaction time later. Holding
+// that latency here is what turns a well-timed strike into a real race
+// instead of an instant loss the moment the bar tops out.
+function scheduleEscape(){
+  if (pendingEscape) return;
+  const [minR, maxR] = CONFIG.REACTION_MS;
+  const reactionMs = Math.round(minR + Math.random() * (maxR - minR));
+  pendingEscape = { at: performance.now() + reactionMs, reactionMs };
+}
+
+function updatePendingEscape(){
+  if (!pendingEscape) return;
+  if (gameState !== GameState.PLAYING && gameState !== GameState.STRIKING) { pendingEscape = null; return; }
+  if (performance.now() >= pendingEscape.at) {
+    const reactionMs = pendingEscape.reactionMs;
+    pendingEscape = null;
+    triggerEscape(reactionMs);
+  }
+}
+
+function setBars(a,b,c){
+  document.getElementById('fillLPLC2').style.width = clamp(a,0,100)+'%';
+  document.getElementById('fillLC4').style.width = clamp(b,0,100)+'%';
+  document.getElementById('fillGF').style.width = clamp(c,0,100)+'%';
+}
+
+function updateStatusPill(ready){
+  const pill = document.getElementById('statusPill');
+  pill.textContent = tr(ready ? 'statusReady' : 'statusSafe');
+  pill.classList.toggle('ready', !!ready);
+}
+
+/* =========================================================================
+   FLY BEHAVIOR
+   ========================================================================= */
+function newFly() {
+  const r = flyRadius();
+  fly = {
+    x: W/2 + (Math.random()-0.5)*60,
+    y: H*CONFIG.FLY_START_Y_RATIO + (Math.random()-0.5)*45,
+    r,
+    ox: 0, oy: 0,         // idle drift offset, shared by the renderer and the hitbox
+    jitterPhase: Math.random()*Math.PI*2,
+    lastHopAt: 0,
+    hop: null,            // { fromX, fromY, toX, toY, start, dur }
+    dash: null            // { fromX, fromY, toX, toY, start, dur }
+  };
+}
+
+function updateFly(dt){
+  if (!fly) return;
+
+  if (gameState === GameState.ESCAPING && fly.dash) {
+    const t = clamp((performance.now() - fly.dash.start) / fly.dash.dur, 0, 1);
+    const e = 1 - Math.pow(1 - t, 3); // easeOutCubic dash
+    fly.x = fly.dash.fromX + (fly.dash.toX - fly.dash.fromX) * e;
+    fly.y = fly.dash.fromY + (fly.dash.toY - fly.dash.fromY) * e;
+    fly.ox = 0; fly.oy = 0;
+    if (t >= 1) {
+      fly.dash = null;
+      enterRecovering();
+    }
+    return;
+  }
+
+  if (fly.hop) {
+    const t = clamp((performance.now() - fly.hop.start) / fly.hop.dur, 0, 1);
+    const e = 1 - Math.pow(1 - t, 3);
+    fly.x = fly.hop.fromX + (fly.hop.toX - fly.hop.fromX) * e;
+    fly.y = fly.hop.fromY + (fly.hop.toY - fly.hop.fromY) * e;
+    if (t >= 1) fly.hop = null;
+  }
+
+  // Idle drift is part of the fly's real position, not just a drawing offset,
+  // so the hitbox always sits under what the player is actually aiming at.
+  const now = Date.now();
+  fly.ox = Math.sin(now*0.0018 + fly.jitterPhase) * 9;
+  fly.oy = Math.cos(now*0.0015 + fly.jitterPhase*1.7) * 6 + Math.sin(now*0.006 + fly.jitterPhase) * 4;
+}
+
+// Small repositioning while the threat is climbing but has not yet crossed —
+// deliberately not an escape, and not constant random wandering.
+function maybeMicroHop(proximityPressure, riseThreshold, threat){
+  if (!fly || fly.hop || fly.dash) return;
+  if (gameState !== GameState.PLAYING) return;
+  const rising = neural.gf > neural.prevGf + 0.4;
+  const inWindow = neural.gf > 30 && neural.gf < riseThreshold - 8;
+  if (!rising && proximityPressure < 25) return;
+  if (!inWindow) return;
+  const now = performance.now();
+  if (now - fly.lastHopAt < CONFIG.MICRO_HOP_COOLDOWN_MS) return;
+
+  fly.lastHopAt = now;
+  const [minH, maxH] = CONFIG.MICRO_HOP_PX;
+  const hopDist = minH + Math.random()*(maxH-minH);
+  let ax = fly.x - threat.x, ay = fly.y - threat.y;
+  const len = Math.hypot(ax, ay);
+  if (len < 1) { ax = 0; ay = -1; } else { ax /= len; ay /= len; }
+  const jitter = (Math.random()-0.5) * 1.2; // ±~35°
+  const angle = Math.atan2(ay, ax) + jitter;
+  const margin = CONFIG.ESCAPE_MARGIN;
+  fly.hop = {
+    fromX: fly.x, fromY: fly.y,
+    toX: clamp(fly.x + Math.cos(angle)*hopDist, margin, Math.max(margin, W-margin)),
+    toY: clamp(fly.y + Math.sin(angle)*hopDist, margin, Math.max(margin, H-margin)),
+    start: now, dur: CONFIG.MICRO_HOP_DURATION_MS
+  };
+}
+
+function computeEscapeTarget(){
+  const margin = CONFIG.ESCAPE_MARGIN;
+  const threat = getThreatPosition();
+  const dx = fly.x - threat.x, dy = fly.y - threat.y;
+  let baseAngle = Math.atan2(dy, dx);
+  if (Math.hypot(dx,dy) < 1) baseAngle = Math.random() * Math.PI * 2;
+
+  const [minJ, maxJ] = CONFIG.ESCAPE_JITTER_DEG;
+  for (let attempt=0; attempt<6; attempt++) {
+    const jitterDeg = (minJ + Math.random()*(maxJ-minJ)) * (Math.random() < 0.5 ? -1 : 1);
+    const angle = baseAngle + jitterDeg * Math.PI/180;
+    const dist = CONFIG.ESCAPE_MIN_DIST + Math.random()*(CONFIG.ESCAPE_MAX_DIST-CONFIG.ESCAPE_MIN_DIST);
+    const tx = clamp(fly.x + Math.cos(angle)*dist, margin, W-margin);
+    const ty = clamp(fly.y + Math.sin(angle)*dist, margin, H-margin);
+    // accept if it actually moved a meaningful distance (arena wasn't too small)
+    if (Math.hypot(tx-fly.x, ty-fly.y) > Math.min(W,H) * 0.2 || attempt === 5) {
+      return { x: tx, y: ty };
+    }
+  }
+  return { x: clamp(W-margin,margin,W-margin), y: clamp(margin,margin,H-margin) };
+}
+
+function triggerEscape(reactionMs){
+  const target = computeEscapeTarget(); // resolved before the swing is cleared
+  strike = null; // any in-flight swing is cancelled — the fly wins the race
+  pendingEscape = null;
+  fly.hop = null;
+  neural.dwell = 0;
+  neural.nearExposure = 0;
+  gameState = GameState.ESCAPING;
+  state.escapesUsed++;
+  state.escapesTotal++;
+
+  fly.dash = {
+    fromX: fly.x, fromY: fly.y, toX: target.x, toY: target.y,
+    start: performance.now(),
+    dur: CONFIG.ESCAPE_DURATION_MS[0] + Math.random()*(CONFIG.ESCAPE_DURATION_MS[1]-CONFIG.ESCAPE_DURATION_MS[0])
+  };
+
+  document.getElementById('reactTitle').textContent = tr('saw');
+  document.getElementById('reactSub').textContent = `Reaction: ${reactionMs}ms · Giant Fiber threshold reached`;
+  document.getElementById('reactEscapeCount').textContent = tr('escapeOf', { n: state.escapesUsed, max: CONFIG.MAX_ESCAPES_PER_ATTEMPT });
+  document.getElementById('reactionPopup').style.display = 'block';
+  flash();
+  setTimeout(() => { document.getElementById('reactionPopup').style.display = 'none'; }, Math.min(900, fly.dash.dur + 500));
+  trackEvent('fly_escaped', { escape: state.escapesUsed, attempt: state.attempt, reactionMs });
+}
+
+function enterRecovering(){
+  gameState = GameState.RECOVERING;
+  recoveryUntil = performance.now() + CONFIG.RECOVERY_MS;
+  neural.gfLatched = false;
+  setTimeout(() => {
+    if (gameState !== GameState.RECOVERING) return;
+    if (state.escapesUsed >= CONFIG.MAX_ESCAPES_PER_ATTEMPT) {
+      attemptEnd(false);
+    } else {
+      gameState = GameState.PLAYING;
+    }
+  }, CONFIG.RECOVERY_MS);
+}
+
+function flash() {
+  const f = document.getElementById('flash');
+  f.style.transition = 'none';
+  f.style.opacity = '0.5';
+  requestAnimationFrame(() => {
+    f.style.transition = 'opacity 0.35s ease-out';
+    f.style.opacity = '0';
+  });
+}
+
+/* =========================================================================
+   STRIKE / SCORING
+   ========================================================================= */
+// Starts the swing — does NOT resolve the hit. Collision is only tested at
+// the impact frame inside updateStrike(), after the neural model has had a
+// full wind-up window to react. See STRIKING in the state diagram above.
+function performStrike(){
+  if (gameState !== GameState.PLAYING || !fly || strike) return;
+  // Direction comes from where the player was actually moving the racket.
+  // The fly's position is deliberately NOT part of this — aim badly, miss.
+  const fp = flyPos();
+  const startedOnTop = Math.hypot(swatter.x - fp.x, swatter.y - fp.y) < fly.r + CONFIG.STRIKE_RADIUS_PAD;
+  strike = {
+    startTime: performance.now(),
+    duration: CONFIG.STRIKE_DURATION_MS,
+    impactChecked: false,
+    dirX: aimDir.x, dirY: aimDir.y,
+    originX: swatter.x, originY: swatter.y,
+    // Parking the racket on the fly and releasing is not a hit: the head has
+    // to sweep INTO the fly during the swing, not already be sitting there.
+    startedOnTop,
+    prevHeadX: swatter.x, prevHeadY: swatter.y
+  };
+  gameState = GameState.STRIKING;
+}
+
+// Shortest distance from a point to the segment a->b. The swing is tested as
+// a swept capsule so a fast head cannot tunnel straight past the fly between
+// two frames, and so a static overlap is not what decides the hit.
+function pointSegmentDistance(px, py, ax, ay, bx, by){
+  const abx = bx - ax, aby = by - ay;
+  const lenSq = abx*abx + aby*aby;
+  if (lenSq < 1e-6) return Math.hypot(px - ax, py - ay);
+  let t = ((px - ax)*abx + (py - ay)*aby) / lenSq;
+  t = clamp(t, 0, 1);
+  return Math.hypot(px - (ax + abx*t), py - (ay + aby*t));
+}
+
+// 0 -> 1 progress through the swing: minimal wind-up, then a fast advance,
+// then a short impact/recoil settle. Shared by the impact test and the render.
+function strikeAdvanceRatio(t){
+  if (t < 0.4) return 0.08 * (t / 0.4);
+  if (t < 0.8) return 0.08 + 0.82 * ((t - 0.4) / 0.4);
+  const local = (t - 0.8) / 0.2;
+  return 0.90 + 0.10 * Math.sin(local * Math.PI);
+}
+
+function strikeHeadCenter(progress){
+  if (!strike) return { x: swatter.x, y: swatter.y };
+  const advance = CONFIG.STRIKE_ADVANCE_PX * strikeAdvanceRatio(progress);
+  return { x: strike.originX + strike.dirX * advance, y: strike.originY + strike.dirY * advance };
+}
+
+function updateStrike(){
+  if (!strike) return;
+  const elapsed = performance.now() - strike.startTime;
+  const progress = clamp(elapsed / strike.duration, 0, 1);
+
+  // The neural model (updateNeuralModel, called every STRIKING frame from
+  // the game loop) can still fire triggerEscape() while we're mid-swing —
+  // that sets strike = null and moves gameState to ESCAPING, which is why
+  // every check below re-verifies `strike` is still the active swing.
+  if (strike && fly) {
+    const head = strikeHeadCenter(progress);
+    const fp = flyPos();
+    const hitRadius = fly.r + CONFIG.STRIKE_RADIUS_PAD;
+    // Swept test across everything the head covered since the last frame, so
+    // a fast head cannot tunnel past the fly between two frames.
+    const swept = pointSegmentDistance(fp.x, fp.y, strike.prevHeadX, strike.prevHeadY, head.x, head.y);
+    // A swing that began with the head already on the fly is dead unless the
+    // head first leaves that area — which, since the head travels along the
+    // player's aim, only happens on a swing aimed away. Parking on top of the
+    // fly and releasing is therefore never a hit.
+    if (strike.startedOnTop && swept > hitRadius) strike.startedOnTop = false;
+
+    // Nothing resolves before the head is genuinely travelling: the wind-up
+    // window belongs to the fly, and that is what the whole STRIKING state
+    // exists for. prevHead still advances every frame so the early path
+    // cannot be retroactively swept once testing opens.
+    const impactLive = progress >= CONFIG.STRIKE_IMPACT_FROM;
+    if (impactLive && !strike.impactChecked && !strike.startedOnTop && swept < hitRadius) {
+      strike.impactChecked = true;
+      gameState = GameState.CAUGHT;
+      strike = null;
+      pendingEscape = null;
+      finishGame(true);
+      return;
+    }
+    strike.prevHeadX = head.x; strike.prevHeadY = head.y;
+  }
+
+  if (strike && progress >= 1) {
+    strike = null;
+    if (gameState === GameState.STRIKING) gameState = GameState.PLAYING;
+  }
+}
+
+function attemptEnd(success){
+  gameState = GameState.ATTEMPT_END;
+  if (success) { finishGame(true); return; }
+  if (state.attempt >= CONFIG.MAX_ATTEMPTS) {
+    finishGame(false);
+    return;
+  }
+  setTimeout(() => {
+    state.attempt++;
+    document.getElementById('attemptNum').textContent = state.attempt;
+    resetForNextAttempt();
+    gameState = GameState.PLAYING;
+  }, CONFIG.ATTEMPT_END_PAUSE_MS);
+}
+
+function computeFinalScore(elapsedSec){
+  const stealth = Math.max(0, 100 - state.peakGF);
+  const precision = Math.max(0, 100 - Math.max(0, state.minDist - 20) * 0.5);
+  const speedBonus = Math.max(0, 20 - elapsedSec * 2);
+  const escapePenalty = state.escapesTotal * 8;
+  const attemptPenalty = (state.attempt - 1) * 10;
+  return Math.max(1, Math.round(precision*0.4 + stealth*0.35 + speedBonus - escapePenalty - attemptPenalty));
+}
+
+// Result of the most recent finished game, plus whatever the server said
+// about it. Share and the retry button both read from here.
+let lastResult = null;
+
+function finishGame(success){
+  gameState = GameState.GAME_OVER;
+  const elapsed = Math.max(0.2, (performance.now() - state.runStart)/1000);
+  const score = success ? computeFinalScore(elapsed) : 0;
+
+  if (score > state.best) {
+    state.best = score;
+    localStorage.setItem('yv_best', state.best);
+    document.getElementById('bestVal').textContent = state.best + ' pts';
+  }
+
+  completedGamesCount++;
+  try { localStorage.setItem('yv_games', completedGamesCount); } catch(_) {}
+
+  lastResult = {
+    success,
+    localScore: score,
+    officialScore: null,
+    rank: null,
+    personalBest: null,
+    movedUp: 0,
+    newBest: false,
+    submitted: false,
+    run: {
+      success,
+      escapes: state.escapesTotal,
+      minDist: Math.round(Math.min(state.minDist, 5000)),
+      peakGF: Math.round(state.peakGF),
+      elapsedMs: Math.round(elapsed * 1000),
+      attempts: state.attempt
+    },
+    stats: {
+      escapes: state.escapesTotal,
+      minDist: Math.round(state.minDist),
+      peakGF: Math.round(state.peakGF),
+      elapsed
+    }
+  };
+
+  trackEvent(success ? 'game_won' : 'game_lost', lastResult.run);
+  renderResultCard();
+  document.getElementById('overlay').hidden = false;
+  loadMonetagResultAd();
+  if (success) trySubmitRun();
+  else if (nicknamePromptPending) openNicknameModal(false);
+}
+
+function renderResultCard(){
+  if (!lastResult) return;
+  const r = lastResult;
+  const s = r.stats;
+  const shownScore = r.officialScore != null ? r.officialScore : r.localScore;
+  const card = document.getElementById('overlayCard');
+
+  const statBlock = `
+    <div id="statLine">
+      🌀 ${tr('escapesCaused')}: <b>${s.escapes}</b><br>
+      📍 ${tr('closestApproach')}: <b>${s.minDist} px</b><br>
+      🧬 ${tr('giantFiberPeak')}: <b>${s.peakGF}%</b><br>
+      ⏱ ${tr('timeLabel')}: <b>${s.elapsed.toFixed(1)}s</b>
+    </div>`;
+
+  if (!r.success) {
+    card.innerHTML = `
+      <h2>💀 <span class="accent">${tr('brainWon')}</span></h2>
+      <p>${tr('lostDesc')}</p>
+      ${statBlock}
+      <button class="btn" onclick="playAgain()">${tr('retry')}</button>
+      <div id="source-note">${tr('sourceNote')}</div>`;
+    return;
+  }
+
+  const headline = `
+    <div id="statLine">
+      🎯 ${tr('score')}: <b>${shownScore}</b><br>
+      🌐 ${tr('globalRank')}: <b>${r.rank != null ? '#'+r.rank : '—'}</b><br>
+      🥇 ${tr('personalBest')}: <b>${r.personalBest != null ? r.personalBest : state.best}</b>
+    </div>`;
+
+  const badges =
+    (r.newBest ? `<div class="result-highlight">⭐ ${tr('newBest')}</div>` : '') +
+    (r.movedUp > 0 ? `<div class="result-highlight">▲ ${tr('movedUp', { n: r.movedUp })}</div>` : '');
+
+  card.innerHTML = `
+    <h2>🪰 <span class="accent">${tr('caught')}</span></h2>
+    <p>${tr('caughtDesc')}</p>
+    ${headline}
+    ${badges}
+    ${statBlock}
+    <div class="form-msg muted" id="submitLine"></div>
+    <button class="btn" onclick="playAgain()">${tr('again')}</button>
+    <button class="btn secondary" onclick="shareResult()">↗ ${tr('share')}</button>
+    <div id="source-note">${tr('sourceNote')}</div>`;
+}
+
+function setSubmitLine(html, cls){
+  const el = document.getElementById('submitLine');
+  if (!el) return;
+  el.className = 'form-msg ' + (cls || 'muted');
+  el.innerHTML = html;
+}
+
+async function trySubmitRun(){
+  if (!lastResult || !lastResult.success || lastResult.submitted) return;
+
+  if (backend.status === 'connecting') {
+    // wait for the connection, but never poll forever
+    lastResult.waitTicks = (lastResult.waitTicks || 0) + 1;
+    if (lastResult.waitTicks <= 16) { setSubmitLine(tr('submitting')); setTimeout(trySubmitRun, 600); return; }
+    setSubmitLine(tr('offlineMode')); return;
+  }
+  if (backend.status !== 'ready')      { setSubmitLine(tr('offlineMode')); return; }
+  if (!backend.profile)                { setSubmitLine(tr('nickTitle')); openNicknameModal(false); return; }
+
+  setSubmitLine(tr('submitting'));
+  const res = await submitRun(lastResult.run);
+
+  if (!res.ok) {
+    setSubmitLine(`${tr('submitFailed')} <button class="chip" onclick="trySubmitRun()">${tr('retrySubmit')}</button>`, 'err');
+    trackEvent('score_submit_failed', { reason: res.reason });
+    return;
+  }
+
+  const d = res.result || {};
+  lastResult.submitted = true;
+  lastResult.officialScore = d.official_score ?? lastResult.localScore;
+  lastResult.rank = d.global_rank ?? null;
+  lastResult.personalBest = d.personal_best ?? null;
+  lastResult.newBest = !!d.improved;
+  lastResult.movedUp = (d.previous_rank != null && d.global_rank != null && d.previous_rank > d.global_rank)
+    ? d.previous_rank - d.global_rank : 0;
+
+  renderResultCard();
+  setSubmitLine('');
+  refreshMyStanding();
+  trackEvent('score_submitted', {
+    score: lastResult.officialScore, rank: lastResult.rank, newBest: lastResult.newBest
+  });
+}
+
+function shareResult() {
+  const r = lastResult;
+  const success = !!(r && r.success);
+  const score = r ? (r.officialScore != null ? r.officialScore : r.localScore) : 0;
+  const rank = r && r.rank != null ? r.rank : null;
+  // Never invent a rank: the line is simply omitted when the server did not
+  // give us one (offline, submit failed, or no leaderboard entry yet).
+  const rankLine = {
+    en: rank ? `\nGlobal rank: #${rank}` : '',
+    pt: rank ? `\nRanking global: #${rank}` : '',
+    zh: rank ? `\n全球排名：#${rank}` : '',
+    es: rank ? `\nRanking global: #${rank}` : '',
+    ru: rank ? `\nМесто в рейтинге: #${rank}` : ''
+  };
+  const templates = {
+    en: success ? `I beat the fly brain 🪰🧠\n\nScore: ${score}${rankLine.en}\n\nCan you beat me?` : `I lost to a fly nervous system with 166,691 mapped neurons 🪰🧠\n\nCan you do better?`,
+    pt: success ? `Eu venci o cérebro da mosca 🪰🧠\n\nPontuação: ${score}${rankLine.pt}\n\nConsegue me superar?` : `Eu perdi para um sistema nervoso de mosca com 166.691 neurônios mapeados 🪰🧠\n\nVocê consegue fazer melhor?`,
+    zh: success ? `我击败了果蝇大脑 🪰🧠\n\n得分：${score}${rankLine.zh}\n\n你能超过我吗？` : `我输给了拥有 166,691 个已绘制神经元的果蝇神经系统 🪰🧠\n\n你能做得更好吗？`,
+    es: success ? `Vencí al cerebro de la mosca 🪰🧠\n\nPuntuación: ${score}${rankLine.es}\n\n¿Puedes superarme?` : `Perdí contra un sistema nervioso de mosca con 166.691 neuronas mapeadas 🪰🧠\n\n¿Puedes hacerlo mejor?`,
+    ru: success ? `Я победил мозг мухи 🪰🧠\n\nСчёт: ${score}${rankLine.ru}\n\nСможешь обойти меня?` : `Я проиграл нервной системе мухи с 166 691 картированными нейронами 🪰🧠\n\nСможешь лучше?`
+  };
+  const shareText = templates[currentLang] || templates.en;
+  // location.origin, never a hardcoded host — a custom domain just works.
+  const shareUrl = location.origin + location.pathname;
+  trackEvent('share_clicked', { score, rank });
+
+  if (navigator.share) {
+    navigator.share({ title: 'YOU vs 166,691', text: shareText, url: shareUrl }).catch(()=>{});
+  } else {
+    navigator.clipboard?.writeText(shareText + '\n\n' + shareUrl);
+    alert(tr('copied'));
+  }
+}
+
+/* =========================================================================
+   ANALYTICS — no-op hooks, ready for a real provider later
+   ========================================================================= */
+function trackEvent(name, data){
+  // Swap this body for a real provider (Plausible, GA4, PostHog…) when needed.
+  if (DEBUG_NEURAL) console.log('[event]', name, data || {});
+}
+
+/* =========================================================================
+   BACKEND — Supabase: anonymous auth, profiles, runs, leaderboard
+   Everything here degrades to "offline" without ever blocking gameplay.
+   ========================================================================= */
+const backend = {
+  status: 'idle',   // idle | connecting | ready | offline
+  client: null,
+  userId: null,
+  profile: null,    // { user_id, nickname }
+  myRank: null,
+  myBest: null
+};
+
+const credentialsConfigured = () =>
+  /^https:\/\/.+\.supabase\.co/.test(SUPABASE_URL) && SUPABASE_PUBLISHABLE_KEY.length > 30;
+
+function waitForSupabaseLib(timeoutMs = 6000){
+  return new Promise(resolve => {
+    if (window.supabase?.createClient) return resolve(true);
+    const started = Date.now();
+    const timer = setInterval(() => {
+      if (window.supabase?.createClient) { clearInterval(timer); resolve(true); }
+      else if (Date.now() - started > timeoutMs) { clearInterval(timer); resolve(false); }
+    }, 120);
+  });
+}
+
+async function initBackend(){
+  if (!credentialsConfigured()) {
+    backend.status = 'offline';
+    refreshIdentityUI();
+    return;
+  }
+  backend.status = 'connecting';
+  try {
+    if (!await waitForSupabaseLib()) throw new Error('supabase-js failed to load');
+    backend.client = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+      auth: { persistSession: true, autoRefreshToken: true }
+    });
+
+    // Instant entry: no email, no password, no provider. The session persists
+    // in localStorage, so a returning player keeps the same identity.
+    let { data: { session } } = await backend.client.auth.getSession();
+    if (!session) {
+      const { data, error } = await backend.client.auth.signInAnonymously();
+      if (error) throw error;
+      session = data.session;
+    }
+    backend.userId = session?.user?.id || null;
+    if (!backend.userId) throw new Error('no user id');
+
+    const { data: profile, error: profileErr } = await backend.client
+      .from('profiles').select('user_id, nickname').eq('user_id', backend.userId).maybeSingle();
+    if (profileErr) throw profileErr;
+
+    backend.profile = profile || null;
+    backend.status = 'ready';
+    refreshIdentityUI();
+    if (!backend.profile) requestNicknamePrompt();
+    else refreshMyStanding();
+  } catch (err) {
+    backend.status = 'offline';
+    backend.client = null;
+    refreshIdentityUI();
+    trackEvent('backend_offline', { message: String(err && err.message || err) });
+  }
+}
+
+async function refreshMyStanding(){
+  if (backend.status !== 'ready' || !backend.userId) return;
+  try {
+    const { data } = await backend.client
+      .from('leaderboard').select('rank, best_score').eq('user_id', backend.userId).maybeSingle();
+    backend.myRank = data?.rank ?? null;
+    backend.myBest = data?.best_score ?? null;
+    refreshIdentityUI();
+  } catch (_) { /* standing is cosmetic — never surface this */ }
+}
+
+/* ---------- nickname ---------- */
+// 3-16 chars after trimming. Letters (any language), digits, underscore,
+// spaces, hyphens and dots are fine; HTML/control characters are not.
+const NICK_FORBIDDEN = new RegExp('[<>&"\'`\\\\/\\u0000-\\u001F\\u007F\\u200B-\\u200F\\u2028\\u2029]');
+
+function validateNickname(raw){
+  const nickname = (raw || '').trim().replace(/\s+/g, ' ');
+  if (nickname.length < 3 || nickname.length > 16) return { ok:false, reason:'nickInvalid' };
+  if (NICK_FORBIDDEN.test(nickname)) return { ok:false, reason:'nickInvalid' };
+  if (!/[\p{L}\p{N}_]/u.test(nickname)) return { ok:false, reason:'nickInvalid' };
+  return { ok:true, nickname };
+}
+
+async function saveNickname(nickname){
+  const row = { user_id: backend.userId, nickname, updated_at: new Date().toISOString() };
+  const query = backend.profile
+    ? backend.client.from('profiles').update({ nickname: row.nickname, updated_at: row.updated_at }).eq('user_id', backend.userId)
+    : backend.client.from('profiles').insert(row);
+  const { error } = await query;
+  if (error) {
+    // 23505 is the unique index on lower(nickname)
+    if (error.code === '23505' || /duplicate key/i.test(error.message || '')) {
+      return { ok:false, reason:'nickTaken' };
+    }
+    return { ok:false, reason:'nickError' };
+  }
+  backend.profile = { user_id: backend.userId, nickname };
+  return { ok:true };
+}
+
+/* ---------- runs ---------- */
+// The client never decides the leaderboard score: submit_run() revalidates the
+// inputs and recomputes the official score server-side.
+async function submitRun(run){
+  if (backend.status !== 'ready') return { ok:false, reason:'offline' };
+  const { data, error } = await backend.client.rpc('submit_run', {
+    p_success: !!run.success,
+    p_escapes: run.escapes,
+    p_min_dist: run.minDist,
+    p_peak_gf: run.peakGF,
+    p_elapsed_ms: run.elapsedMs,
+    p_attempts: run.attempts,
+    p_game_version: GAME_VERSION
+  });
+  if (error) return { ok:false, reason:'error', error };
+  return { ok:true, result: data };
+}
+
+async function fetchLeaderboard(limit = 100){
+  if (backend.status !== 'ready') return { ok:false, reason:'offline' };
+  const { data, error } = await backend.client
+    .from('leaderboard').select('rank, nickname, best_score, user_id')
+    .order('rank', { ascending: true }).limit(limit);
+  if (error) return { ok:false, reason:'error', error };
+  return { ok:true, rows: data || [] };
+}
+
+async function fetchMyStats(){
+  if (backend.status !== 'ready' || !backend.userId) return null;
+  const [{ data: stand }, { count }] = await Promise.all([
+    backend.client.from('leaderboard').select('rank, best_score').eq('user_id', backend.userId).maybeSingle(),
+    backend.client.from('runs').select('id', { count:'exact', head:true }).eq('user_id', backend.userId)
+  ]);
+  return { rank: stand?.rank ?? null, best: stand?.best_score ?? null, games: count ?? 0 };
+}
+
+/* =========================================================================
+   IDENTITY / MODAL UI
+   ========================================================================= */
+function escapeHtml(str){
+  return String(str).replace(/[&<>"']/g, c =>
+    ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+}
+
+function openModal(id){ document.getElementById(id).hidden = false; }
+function closeModal(id){ document.getElementById(id).hidden = true; }
+
+// The topbar sits above the overlay so these stay reachable on the start and
+// game-over screens — but they are hidden mid-run, so nobody loses a fly to a
+// leaderboard they opened by accident. Chrome only: no game state is touched.
+function onMenuScreen(){
+  return gameState === GameState.IDLE || gameState === GameState.GAME_OVER;
+}
+
+function refreshIdentityUI(){
+  const chip = document.getElementById('nickChip');
+  const lbBtn = document.getElementById('lbBtn');
+  const menu = onMenuScreen();
+  chip.hidden = !(menu && backend.profile?.nickname);
+  if (backend.profile?.nickname) {
+    document.getElementById('nickChipName').textContent = backend.profile.nickname;
+  }
+  lbBtn.hidden = !menu;
+}
+
+// cheap watcher instead of hooking the game loop or any gameplay transition
+setInterval(() => {
+  const menu = onMenuScreen();
+  if (menu !== refreshIdentityUI._last) { refreshIdentityUI._last = menu; refreshIdentityUI(); }
+}, 250);
+
+let nicknamePromptPending = false;
+function requestNicknamePrompt(){
+  // Never interrupt a live run — queue it until the player is back on a menu.
+  if (gameState === GameState.IDLE || gameState === GameState.GAME_OVER) openNicknameModal(false);
+  else nicknamePromptPending = true;
+}
+
+function openNicknameModal(isChange){
+  if (backend.status !== 'ready') return;
+  closeModal('profileModal');
+  const input = document.getElementById('nickInput');
+  input.value = isChange ? (backend.profile?.nickname || '') : '';
+  setNickMsg('', '');
+  openModal('nickModal');
+  setTimeout(() => input.focus(), 60);
+}
+
+function setNickMsg(text, cls){
+  const el = document.getElementById('nickMsg');
+  el.textContent = text;
+  el.className = 'form-msg' + (cls ? ' ' + cls : '');
+}
+
+async function submitNickname(){
+  const btn = document.getElementById('nickSubmit');
+  const check = validateNickname(document.getElementById('nickInput').value);
+  if (!check.ok) { setNickMsg(tr(check.reason), 'err'); return; }
+
+  btn.disabled = true;
+  setNickMsg(tr('nickSaving'), 'muted');
+  const res = await saveNickname(check.nickname);
+  btn.disabled = false;
+
+  if (!res.ok) { setNickMsg(tr(res.reason), 'err'); return; }
+  setNickMsg('', '');
+  closeModal('nickModal');
+  nicknamePromptPending = false;
+  refreshIdentityUI();
+  refreshMyStanding();
+  trackEvent('nickname_created', { nickname: check.nickname });
+  // a finished run that was blocked waiting for a profile can go out now
+  if (lastResult && lastResult.success && !lastResult.submitted) trySubmitRun();
+}
+
+async function openProfile(){
+  if (backend.status !== 'ready') return;
+  const stats = document.getElementById('profileStats');
+  stats.innerHTML = `<span>${tr('lbLoading')}</span><b></b>`;
+  openModal('profileModal');
+  const s = await fetchMyStats();
+  const nick = backend.profile?.nickname || '—';
+  stats.innerHTML = `
+    <span>${tr('nickLabel')}</span><b>${escapeHtml(nick)}</b>
+    <span>${tr('personalBest')}</span><b>${s && s.best != null ? s.best : '—'}</b>
+    <span>${tr('globalRank')}</span><b>${s && s.rank != null ? '#'+s.rank : '—'}</b>
+    <span>${tr('gamesPlayed')}</span><b>${s ? s.games : '—'}</b>`;
+}
+
+function openPrivacy(){ openModal('privacyModal'); }
+
+async function openLeaderboard(){
+  openModal('lbModal');
+  trackEvent('leaderboard_opened', {});
+  const list = document.getElementById('lbList');
+  const selfWrap = document.getElementById('lbSelfWrap');
+  selfWrap.hidden = true;
+  list.innerHTML = `<div class="lb-entry"><span></span><span>${tr('lbLoading')}</span><span></span></div>`;
+
+  const res = await fetchLeaderboard(100);
+  if (!res.ok) {
+    list.innerHTML = `<div class="lb-entry"><span></span><span>${tr('lbUnavailable')}</span><span></span></div>`;
+    return;
+  }
+  if (!res.rows.length) {
+    list.innerHTML = `<div class="lb-entry"><span></span><span>${tr('lbEmpty')}</span><span></span></div>`;
+    return;
+  }
+
+  const mine = backend.userId;
+  let meInTop = false;
+  list.innerHTML = res.rows.map(r => {
+    const isMe = r.user_id === mine;
+    if (isMe) meInTop = true;
+    return `<div class="lb-entry${isMe ? ' me' : ''}${r.rank <= 3 ? ' top' : ''}">
+      <span class="lb-rank">${r.rank}</span>
+      <span class="lb-name">${escapeHtml(r.nickname)}</span>
+      <span class="lb-score">${r.best_score}</span>
+    </div>`;
+  }).join('');
+
+  if (!meInTop && backend.status === 'ready') {
+    const s = await fetchMyStats();
+    if (s && s.rank != null) {
+      selfWrap.innerHTML = `<div class="lb-entry me">
+        <span class="lb-rank">${s.rank}</span>
+        <span class="lb-name">${tr('you')} · ${escapeHtml(backend.profile?.nickname || '')}</span>
+        <span class="lb-score">${s.best}</span>
+      </div>`;
+      selfWrap.hidden = false;
+    }
+  }
+}
+
+// Escape key closes whatever modal is on top; never reaches the game.
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') ['privacyModal','profileModal','lbModal'].forEach(closeModal);
+  if (e.key === 'Enter' && !document.getElementById('nickModal').hidden) submitNickname();
+});
+
+/* =========================================================================
+   MONETAG — result-screen only
+   The In-Page Push tag is intentionally lazy-loaded only after GAME_OVER,
+   so it cannot appear during active gameplay. Reloading between runs clears
+   any ad DOM before the next round starts.
+   ========================================================================= */
+let monetagResultTagLoaded = false;
+function loadMonetagResultAd(){
+  if (monetagResultTagLoaded) return;
+  monetagResultTagLoaded = true;
+  setTimeout(() => {
+    try {
+      (function(s){
+        s.dataset.zone='11779049';
+        s.src='https://nap5k.com/tag.min.js';
+      })([document.documentElement, document.body].filter(Boolean).pop().appendChild(document.createElement('script')));
+    } catch (_) {}
+  }, 650);
+}
+
+function cleanRestartAfterResult(){
+  const started = Date.now();
+  const go = () => {
+    // Give a successful run a short chance to finish its Supabase submission
+    // before reloading. Never trap the player if the network is slow/offline.
+    if (lastResult?.success && !lastResult.submitted && backend.status === 'ready' && Date.now() - started < 2200) {
+      setTimeout(go, 120);
+      return;
+    }
+    try { sessionStorage.setItem('yv_auto_restart', '1'); } catch (_) {}
+    location.reload();
+  };
+  go();
+}
+
+/* =========================================================================
+   ADS — Google H5 Games Ad Placement API
+   While ADS_CONFIG.enabled is false this module issues ZERO network requests.
+   ========================================================================= */
+const ads = { loaded: false };
+let completedGamesCount = Number(localStorage.getItem('yv_games') || 0);
+
+function adsAvailable(){
+  return ADS_CONFIG.enabled && /^ca-pub-\d+$/.test(ADS_CONFIG.publisherId);
+}
+
+function loadAdsScript(){
+  if (ads.loaded || !adsAvailable()) return;
+  ads.loaded = true;
+  const s = document.createElement('script');
+  s.async = true;
+  s.crossOrigin = 'anonymous';
+  s.dataset.adFrequencyHint = '60s';
+  s.src = 'https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=' + ADS_CONFIG.publisherId;
+  s.onerror = () => { ads.loaded = false; };
+  document.head.appendChild(s);
+  window.adsbygoogle = window.adsbygoogle || [];
+  window.adBreak = window.adConfig = function(o){ window.adsbygoogle.push(o); };
+  window.adConfig({ preloadAdBreaks: 'on' });
+}
+
+// Interstitials only ever run on a natural transition: the player choosing to
+// start another game from the game-over screen, and at most once every N games.
+function maybeShowInterstitialBeforeReplay(done){
+  if (!adsAvailable() || typeof window.adBreak !== 'function') return done();
+  if (completedGamesCount % ADS_CONFIG.gamesBetweenInterstitials !== 0) return done();
+
+  let resumed = false;
+  const resume = () => { if (!resumed) { resumed = true; done(); } };
+  const bail = setTimeout(resume, 4000); // never strand the player on a slow ad
+  try {
+    window.adBreak({
+      type: 'next',
+      name: 'replay-interstitial',
+      afterAd: () => { clearTimeout(bail); resume(); },
+      adBreakDone: () => { clearTimeout(bail); resume(); }
+    });
+  } catch (_) { clearTimeout(bail); resume(); }
+}
+
+function playAgain(){
+  trackEvent('play_again', { completedGamesCount });
+  if (nicknamePromptPending) { openNicknameModal(false); return; }
+  // Clean page reload guarantees the Monetag result ad cannot leak into gameplay.
+  // The existing H5 hook remains in front for the day Google H5 Ads is enabled.
+  maybeShowInterstitialBeforeReplay(() => cleanRestartAfterResult());
+}
+
+/* =========================================================================
+   ROUND / GAME LIFECYCLE
+   ========================================================================= */
+function resetForNextAttempt(){
+  state.escapesUsed = 0;
+  neural.lplc2 = 0; neural.lc4 = 0; neural.gf = 0; neural.instant = 0; neural.gfLatched = false; neural.lastDist = null;
+  neural.nearExposure = 0; neural.dwell = 0; neural.prevGf = 0;
+  recoveryUntil = 0;
+  strike = null;
+  pendingEscape = null;
+  aimDir.x = 0; aimDir.y = -1;
+  newFly();
+  swatter.x = W*0.5; swatter.y = H*CONFIG.SWATTER_START_Y_RATIO;
+  setBars(0,0,0);
+  updateStatusPill(false);
+}
+
+function startGame() {
+  document.getElementById('overlay').hidden = true;
+  resize();
+  state.attempt = 1;
+  state.escapesUsed = 0;
+  state.escapesTotal = 0;
+  state.minDist = Infinity;
+  state.peakGF = 0;
+  state.runStart = performance.now();
+  document.getElementById('attemptNum').textContent = state.attempt;
+  resetForNextAttempt();
+  gameState = GameState.PLAYING;
+  trackEvent('game_started', { attempt: state.attempt });
+}
+
+/* =========================================================================
+   RENDERING — game (fly + swatter)
+   ========================================================================= */
+function renderGame(dt) {
+  if (!W || !H) return;
+  ctx.clearRect(0,0,W,H);
+
+  // faint neural grid backdrop
+  ctx.fillStyle = 'rgba(124,77,255,0.03)';
+  for (let i=0;i<W;i+=28) ctx.fillRect(i,0,1,H);
+  for (let j=0;j<H;j+=28) ctx.fillRect(0,j,W,1);
+
+  renderSwatter(dt);
+  renderFly();
+}
+
+function renderSwatter(dt){
+  swatter.tilt = clamp(swatter.tilt * 0.85 + (swatter.vx * 0.0025), -0.5, 0.5);
+
+  // world-space head advance driven by the actual strike wind-up, not a
+  // fixed decay — this is what strikeHeadCenter() uses for the hit test too.
+  let worldX = swatter.x, worldY = swatter.y, punch = 0;
+  if (strike) {
+    const progress = clamp((performance.now() - strike.startTime) / strike.duration, 0, 1);
+    const head = strikeHeadCenter(progress);
+    worldX = head.x; worldY = head.y;
+    punch = strikeAdvanceRatio(progress);
+  }
+  const scale = 1 + punch * 0.18;
+
+  ctx.save();
+  ctx.translate(worldX, worldY);
+  ctx.rotate(-0.18 + swatter.tilt);
+  ctx.scale(scale, scale);
+
+  // handle
+  ctx.strokeStyle = 'rgba(230,220,255,.85)';
+  ctx.lineWidth = 4;
+  ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(0,20); ctx.lineTo(0,60); ctx.stroke();
+  // handle grip
+  ctx.strokeStyle = 'rgba(124,77,255,.7)';
+  ctx.lineWidth = 6;
+  ctx.beginPath(); ctx.moveTo(0,46); ctx.lineTo(0,60); ctx.stroke();
+
+  // mesh head
+  ctx.fillStyle = `rgba(255,110,199,${0.08 + punch*0.18})`;
+  ctx.strokeStyle = '#ff6ec7';
+  ctx.lineWidth = 2.2;
+  ctx.beginPath(); ctx.ellipse(0,0,26,21,0,0,Math.PI*2); ctx.fill(); ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,110,199,.5)';
+  ctx.lineWidth = 1;
+  for(let x=-16;x<=16;x+=6.5){ ctx.beginPath(); ctx.moveTo(x,-15); ctx.lineTo(x,15); ctx.stroke(); }
+  for(let y=-11;y<=11;y+=6.5){ ctx.beginPath(); ctx.moveTo(-19,y); ctx.lineTo(19,y); ctx.stroke(); }
+  ctx.restore();
+}
+
+function renderFly() {
+  if (!fly) return;
+
+  const isDashing = gameState === GameState.ESCAPING && fly.dash;
+  const wingSpeed = isDashing ? 0.05 : 0.11;
+  const r = fly.r;
+
+  // drift now lives on the fly itself (updateFly), so the drawn body and the
+  // hitbox are the same thing
+  const fp = flyPos();
+  ctx.save();
+  ctx.translate(fp.x, fp.y);
+
+  // short motion trail while dashing away
+  if (isDashing) {
+    const back = { x: fly.dash.fromX - fly.x, y: fly.dash.fromY - fly.y };
+    const len = Math.hypot(back.x, back.y);
+    if (len > 2) {
+      const nx = back.x/len, ny = back.y/len;
+      const grad = ctx.createLinearGradient(0,0, nx*40, ny*40);
+      grad.addColorStop(0,'rgba(255,230,120,.35)');
+      grad.addColorStop(1,'rgba(255,230,120,0)');
+      ctx.strokeStyle = grad;
+      ctx.lineWidth = r*0.9;
+      ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(nx*40, ny*40); ctx.stroke();
+    }
+  }
+
+  // soft glow so the fly never disappears into the background
+  const glow = ctx.createRadialGradient(0,0,2,0,0,r*1.3);
+  glow.addColorStop(0,'rgba(255,230,120,.30)');
+  glow.addColorStop(1,'rgba(255,230,120,0)');
+  ctx.fillStyle = glow;
+  ctx.beginPath(); ctx.arc(0,0,r*1.3,0,Math.PI*2); ctx.fill();
+
+  if (assets.fly.ready) {
+    const s = r * 2.6;
+    ctx.drawImage(assets.fly.img, -s/2, -s/2, s, s);
+  } else {
+    const k = r / 24; // scale the vector fallback to the target radius
+    ctx.scale(k, k);
+
+    // legs
+    ctx.strokeStyle = '#cfc7ff';
+    ctx.lineWidth = 2;
+    [[-7,-4,-22,-14],[-7,0,-24,0],[-7,5,-22,15],[5,-4,22,-14],[5,0,24,0],[5,5,22,15]].forEach(p=>{
+      ctx.beginPath(); ctx.moveTo(p[0],p[1]); ctx.lineTo(p[2],p[3]); ctx.stroke();
+    });
+
+    // wings (vibrate faster while escaping)
+    const wingFlap = Math.sin(Date.now()*wingSpeed) * 0.12;
+    ctx.fillStyle = 'rgba(190,230,255,.78)';
+    ctx.strokeStyle = 'rgba(255,255,255,.65)';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath(); ctx.ellipse(-8,-13,17,7,-0.45+wingFlap,0,Math.PI*2); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(-8,13,17,7,0.45-wingFlap,0,Math.PI*2); ctx.fill(); ctx.stroke();
+
+    // thorax / abdomen
+    ctx.fillStyle = '#1d172b';
+    ctx.strokeStyle = '#f4e9ff';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.ellipse(0,0,22,15,0,0,Math.PI*2); ctx.fill(); ctx.stroke();
+
+    ctx.fillStyle = '#44345f';
+    ctx.beginPath(); ctx.ellipse(-8,0,9,10,0,0,Math.PI*2); ctx.fill();
+
+    // head + eyes
+    ctx.fillStyle = '#2e243f';
+    ctx.beginPath(); ctx.arc(13,0,8,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#ff365f';
+    ctx.beginPath(); ctx.arc(16,-4,3.2,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(16,4,3.2,0,Math.PI*2); ctx.fill();
+  }
+
+  ctx.restore();
+}
+
+/* =========================================================================
+   RENDERING — brain (LIVE FLY BRAIN panel)
+   This is a schematic activity view tied to the game's neural variables,
+   not a simulation of the full MaleCNS graph.
+   ========================================================================= */
+const brainNodes = [];
+const brainEdges = [];
+(function buildBrain(){
+  const cols = 9, rows = 5;
+  for(let r=0;r<rows;r++){
+    for(let c=0;c<cols;c++){
+      const idx = r*cols+c;
+      brainNodes.push({
+        x:(c+0.65)/cols,
+        y:(r+0.85)/(rows+0.8),
+        group: c < 3 ? 'visual' : (c < 7 ? 'decision' : 'escape'),
+        phase: Math.random()*Math.PI*2
+      });
+      if(c>0){ const prev = idx-1; if(Math.random()>.08) brainEdges.push([prev, idx]); }
+      if(r>0 && Math.random()>.45){ brainEdges.push([idx-cols, idx]); }
+      if(r<rows-1 && c>1 && Math.random()>.7){ brainEdges.push([idx, idx+cols-1]); }
+    }
+  }
+})();
+
+function renderBrain(){
+  if(!BW || !BH) return;
+  bctx.clearRect(0,0,BW,BH);
+
+  const lplc2 = neural.lplc2, lc4 = neural.lc4, gf = neural.gf;
+
+  // organic silhouette fallback (also visible faintly under the connectome image)
+  bctx.save();
+  bctx.translate(BW*0.5,BH*0.53);
+  bctx.scale(BW*0.40,BH*0.34);
+  bctx.fillStyle='rgba(124,77,255,.05)';
+  bctx.strokeStyle='rgba(124,77,255,.22)';
+  bctx.lineWidth=1/Math.max(BW*.40,1);
+  bctx.beginPath();
+  bctx.moveTo(-1,0);
+  bctx.bezierCurveTo(-.98,-.82,-.42,-1.05,0,-.88);
+  bctx.bezierCurveTo(.48,-1.08,1.00,-.72,1,0);
+  bctx.bezierCurveTo(.98,.72,.45,1.00,0,.84);
+  bctx.bezierCurveTo(-.45,1.03,-.98,.74,-1,0);
+  bctx.closePath();
+  bctx.fill(); bctx.stroke();
+  bctx.restore();
+
+  for(const [a,b] of brainEdges){
+    const na=brainNodes[a], nb=brainNodes[b];
+    const ax=na.x*BW, ay=na.y*BH, bx=nb.x*BW, by=nb.y*BH;
+    let act=0;
+    if(nb.group==='visual') act=Math.max(lplc2,lc4)/100;
+    else if(nb.group==='decision') act=(lplc2*.45+lc4*.55)/100;
+    else act=gf/100;
+
+    const pulse=(Math.sin(performance.now()/170 + a*.8)+1)/2;
+    const alpha=.18 + act*.42 + pulse*(.04 + act*.16);
+    bctx.strokeStyle=`rgba(${nb.group==='escape'?'255,120,90':'130,110,255'},${alpha})`;
+    bctx.lineWidth=1 + act*1.2;
+    bctx.beginPath(); bctx.moveTo(ax,ay); bctx.lineTo(bx,by); bctx.stroke();
+  }
+
+  brainNodes.forEach((n)=>{
+    let act=0;
+    if(n.group==='visual') act=Math.max(lplc2,lc4)/100;
+    else if(n.group==='decision') act=(lplc2*.45+lc4*.55)/100;
+    else act=gf/100;
+
+    const pulse=(Math.sin(performance.now()/130 + n.phase)+1)/2;
+    const r=2.8 + act*3.8 + pulse*(0.45 + act*1.8);
+    const x=n.x*BW, y=n.y*BH;
+    const grad=bctx.createRadialGradient(x,y,0,x,y,r*3);
+    if(n.group==='visual'){ grad.addColorStop(0,`rgba(0,229,255,${.45+act*.55})`); grad.addColorStop(1,'rgba(0,229,255,0)'); }
+    else if(n.group==='decision'){ grad.addColorStop(0,`rgba(150,110,255,${.42+act*.58})`); grad.addColorStop(1,'rgba(150,110,255,0)'); }
+    else { grad.addColorStop(0,`rgba(255,95,80,${.42+act*.58})`); grad.addColorStop(1,'rgba(255,95,80,0)'); }
+    bctx.fillStyle=grad;
+    bctx.beginPath(); bctx.arc(x,y,r*3,0,Math.PI*2); bctx.fill();
+
+    bctx.fillStyle = n.group==='escape' ? '#ff8a72' : (n.group==='visual' ? '#66f4ff' : '#bca8ff');
+    bctx.beginPath(); bctx.arc(x,y,Math.max(1.4,r*.44),0,Math.PI*2); bctx.fill();
+  });
+
+  bctx.font='10px system-ui';
+  bctx.fillStyle='rgba(190,230,255,.8)';
+  bctx.fillText('LPLC2 / LC4', 10, BH*0.5);
+  bctx.fillStyle='rgba(190,170,255,.8)';
+  bctx.fillText('INTEGRATION', BW*.40, BH*0.5);
+  bctx.fillStyle='rgba(255,150,120,.9)';
+  bctx.fillText('GIANT FIBER', BW*.75, BH*0.5);
+
+  if (gameState === GameState.ESCAPING || gf > CONFIG.GF_RISE_THRESHOLD - 4) {
+    bctx.font='700 13px system-ui';
+    bctx.fillStyle='#ffcc4d';
+    bctx.fillText('⚡ ESCAPE SIGNAL', BW*.5 - 46, BH*.16);
+  }
+}
+
+/* =========================================================================
+   GAME LOOP
+   ========================================================================= */
+let lastT = performance.now();
+let lastSwatterX = 0, lastSwatterY = 0;
+
+function frame(t) {
+  const dt = Math.max(0.001, Math.min(0.05, (t - lastT)/1000));
+  lastT = t;
+
+  if (!W || !H) resize(); // guard against a 0-size canvas on the very first frame
+
+  swatter.vx = (swatter.x - lastSwatterX) / dt;
+  swatter.vy = (swatter.y - lastSwatterY) / dt;
+  lastSwatterX = swatter.x; lastSwatterY = swatter.y;
+
+  // Aim tracks the player's own recent racket movement (mouse deltas on
+  // desktop, trackpad deltas on mobile). When they hold still it keeps the
+  // last direction they committed to.
+  const aimSpeed = Math.hypot(swatter.vx, swatter.vy);
+  if (aimSpeed > 60) {
+    const nx = swatter.vx / aimSpeed, ny = swatter.vy / aimSpeed;
+    aimDir.x += (nx - aimDir.x) * 0.35;
+    aimDir.y += (ny - aimDir.y) * 0.35;
+    const l = Math.hypot(aimDir.x, aimDir.y) || 1;
+    aimDir.x /= l; aimDir.y /= l;
+  }
+
+  if (gameState === GameState.PLAYING || gameState === GameState.STRIKING) updateNeuralModel(dt);
+  updatePendingEscape();
+  updateStrike();
+  updateFly(dt);
+
+  renderGame(dt);
+  renderBrain();
+
+  requestAnimationFrame(frame);
+}
+
+/* =========================================================================
+   INIT
+   ========================================================================= */
+applyLanguage();
+resize();
+newFly();
+swatter.x = W * 0.5;
+swatter.y = H * CONFIG.SWATTER_START_Y_RATIO;
+lastSwatterX = swatter.x; lastSwatterY = swatter.y;
+setBars(0,0,0);
+updateStatusPill(false);
+renderGame(0.016);
+renderBrain();
+
+requestAnimationFrame(frame);
+
+/* ---------- production boot: canonical URL, backend, ads ---------- */
+// Works on any origin, so pointing a custom domain at this build needs no edit.
+(function bootProduction(){
+  const cleanUrl = location.origin + location.pathname;
+  const canonical = document.getElementById('canonicalLink');
+  if (canonical) canonical.href = cleanUrl;
+  const ogUrl = document.querySelector('meta[property="og:url"]');
+  if (ogUrl && /REPLACE-WITH-YOUR-DOMAIN/.test(ogUrl.content)) ogUrl.content = cleanUrl;
+
+  loadAdsScript();      // no-ops entirely while ADS_CONFIG.enabled is false
+  initBackend();        // async; gameplay never waits on it
+
+  // A replay reload starts directly into a fresh round without asking the user
+  // to press Play twice. Supabase auth/profile persist independently.
+  let autoRestart = false;
+  try {
+    autoRestart = sessionStorage.getItem('yv_auto_restart') === '1';
+    if (autoRestart) sessionStorage.removeItem('yv_auto_restart');
+  } catch (_) {}
+  if (autoRestart) setTimeout(() => startGame(), 220);
+})();
+</script>
+</body>
+</html>
