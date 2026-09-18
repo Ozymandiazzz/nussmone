@@ -1,0 +1,26 @@
+{
+  "status": "success",
+  "source_mesh": "geometry_0",
+  "source_uv": "UVMap",
+  "target_uv": "uv_0",
+  "basecolor_extracted": true,
+  "source_dimensions_before": [
+    0.6395307779312134,
+    0.6394198536872864,
+    1.0017435550689697
+  ],
+  "template_dimensions": [
+    0.3762579560279846,
+    0.3750826418399811,
+    0.5918347239494324
+  ],
+  "source_dimensions_after": [
+    0.3778377175331116,
+    0.3777722120285034,
+    0.5918347835540771
+  ],
+  "faces_before": 287966,
+  "faces_after": 6000,
+  "target_mesh": "s4studio_mesh_1",
+  "cut_preserved": true
+}
