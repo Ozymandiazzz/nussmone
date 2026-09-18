@@ -192,7 +192,10 @@ def secure_source_uv(source, output_dir):
     if len(uvs) == 0:
         fail(output_dir, "source_uv", "source mesh has no UV layer")
 
-    uv = uvs.active_render or uvs.active or uvs[0]
+    # detectar por origem: UV marcado como render -> ativo -> primeiro valido.
+    # active_render e uma flag por-camada, nao um atributo da colecao.
+    render_uv = next((u for u in uvs if getattr(u, "active_render", False)), None)
+    uv = render_uv or uvs.active or uvs[0]
     real_name = uv.name
     uv.name = SOURCE_UV_NAME  # renomeia ANTES de qualquer Join
     log("[PASS] Source UV found: %s (renamed -> %s)" % (real_name, SOURCE_UV_NAME))
