@@ -12,6 +12,12 @@ param(
 
     [string]$Template = "",
 
+    [double]$RotateX = 0,
+
+    [double]$RotateY = 0,
+
+    [double]$RotateZ = 0,
+
     [string]$Blender = "C:\Program Files\Blender Foundation\Blender 4.4\blender.exe"
 )
 
@@ -60,6 +66,7 @@ $header = @(
     "input:   $((Resolve-Path -LiteralPath $inputPath).Path)"
     "template:$((Resolve-Path -LiteralPath $Template).Path)"
     "output:  $outDir"
+    "rotate:  x=$RotateX y=$RotateY z=$RotateZ"
     ""
 )
 Set-Content -LiteralPath $logPath -Value $header -Encoding UTF8
@@ -70,7 +77,10 @@ $blenderArgs = @(
     "--",
     "--input", (Resolve-Path -LiteralPath $inputPath).Path,
     "--template", (Resolve-Path -LiteralPath $Template).Path,
-    "--output", $outDir
+    "--output", $outDir,
+    "--rotate-x", "$RotateX",
+    "--rotate-y", "$RotateY",
+    "--rotate-z", "$RotateZ"
 )
 
 & $Blender @blenderArgs 2>&1 | Tee-Object -FilePath $logPath -Append

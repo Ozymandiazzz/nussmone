@@ -33,7 +33,8 @@ import sys
 import os
 import json
 import argparse
-from mathutils import Vector
+from math import radians
+from mathutils import Euler, Vector
 
 
 # ---------------------------------------------------------------------------
@@ -115,6 +116,12 @@ def parse_args():
     p.add_argument("--input", required=True, help="input.glb")
     p.add_argument("--template", required=True, help="template.blend do decor_vase")
     p.add_argument("--output", required=True, help="pasta de output/")
+    p.add_argument("--rotate-x", type=float, default=0.0,
+                   help="rotacao explicita do source em X (graus), antes do fit")
+    p.add_argument("--rotate-y", type=float, default=0.0,
+                   help="rotacao explicita do source em Y (graus), antes do fit")
+    p.add_argument("--rotate-z", type=float, default=0.0,
+                   help="rotacao explicita do source em Z (graus), antes do fit")
     return p.parse_args(argv)
 
 
@@ -283,7 +290,33 @@ def clean_transform(source):
 
 
 # ---------------------------------------------------------------------------
-# 6. auto-fit para decor_vase (primeiro passo "de recipe")
+# 6a. rotacao explicita (sem heuristica)
+# ---------------------------------------------------------------------------
+def apply_explicit_rotation(source, rx, ry, rz, report):
+    """Aplica --rotate-* ao source. Sem inferencia: 0,0,0 = nao rotaciona."""
+    report["rotate_x"] = rx
+    report["rotate_y"] = ry
+    report["rotate_z"] = rz
+    if rx == 0.0 and ry == 0.0 and rz == 0.0:
+        log("[INFO] explicit rotation: 0 0 0")
+        return
+
+    source.rotation_mode = "XYZ"
+    source.rotation_euler = Euler((radians(rx), radians(ry), radians(rz)), "XYZ")
+    bpy.context.view_layer.update()
+
+    bpy.ops.object.select_all(action="DESELECT")
+    source.select_set(True)
+    bpy.context.view_layer.objects.active = source
+    with bpy.context.temp_override(active_object=source,
+                                   selected_objects=[source],
+                                   selected_editable_objects=[source]):
+        bpy.ops.object.transform_apply(location=False, rotation=True, scale=False)
+    log("[PASS] explicit rotation (x=%.4f y=%.4f z=%.4f)" % (rx, ry, rz))
+
+
+# ---------------------------------------------------------------------------
+# 6. auto-fit: uniforme, cabe inteiro no bbox do template
 # ---------------------------------------------------------------------------
 def auto_fit(source, target, report):
     log("[CCStudio] Fitting mesh...")
@@ -296,20 +329,20 @@ def auto_fit(source, target, report):
     report["source_dimensions_before"] = list(s_dims)
     report["template_dimensions"] = list(t_dims)
 
-    if s_dims.z <= 1e-9 or t_dims.z <= 1e-9:
-        raise PipelineError("auto_fit", "degenerate Z dimension during fit")
+    if min(s_dims.x, s_dims.y, s_dims.z) <= 1e-9:
+        raise PipelineError("auto_fit", "degenerate source dimension during fit")
+    if min(t_dims.x, t_dims.y, t_dims.z) <= 1e-9:
+        raise PipelineError("auto_fit", "degenerate template dimension during fit")
 
-    # escala UNIFORME pela altura Z (nunca deformar X/Y/Z separadamente)
-    scale = t_dims.z / s_dims.z
+    # uniforme: menor razao que faz o source caber no bbox do template
+    scale = min(t_dims.x / s_dims.x, t_dims.y / s_dims.y, t_dims.z / s_dims.z)
     source.scale = source.scale * scale
     bpy.context.view_layer.update()
 
-    # recalcular bbox pos-escala p/ posicionar
     s_min, s_max = world_bbox(source)
     s_center = (s_min + s_max) * 0.5
     t_center = (t_min + t_max) * 0.5
 
-    # centralizar X/Y no template, alinhar base ao Z minimo do template
     dx = t_center.x - s_center.x
     dy = t_center.y - s_center.y
     dz = t_min.z - s_min.z
@@ -317,8 +350,9 @@ def auto_fit(source, target, report):
     bpy.context.view_layer.update()
 
     s_min, s_max = world_bbox(source)
+    report["fit_scale"] = scale
     report["source_dimensions_after"] = list(bbox_dims(s_min, s_max))
-    log("[PASS] fit (scale=%.4f)" % scale)
+    log("[PASS] fit (uniform scale=%.4f)" % scale)
 
 
 # ---------------------------------------------------------------------------
@@ -566,6 +600,9 @@ def main():
 
         # 5
         clean_transform(source)
+
+        # 6a
+        apply_explicit_rotation(source, args.rotate_x, args.rotate_y, args.rotate_z, report)
 
         # 6
         auto_fit(source, target, report)
