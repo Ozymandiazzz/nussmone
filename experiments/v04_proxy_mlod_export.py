@@ -12,6 +12,7 @@ import os
 import struct
 import sys
 import traceback
+import zlib
 from pathlib import Path
 
 import bpy
@@ -23,6 +24,7 @@ from independent_rcol import Rcol, u32
 from v02_identity_clone import h, read_package, write_package
 
 MLOD = 0x01D10F34
+MODL = 0x01661233
 GROUP_TARGETS = {0x00010000: 1500, 0x00010001: 800, 0x00010002: 750}
 
 
@@ -122,11 +124,35 @@ def encode_proxy(rcol: Rcol, positions, triangles) -> Rcol:
     struct.pack_into('<6f', mlod, entry_start + 48, *mins, *maxs)
     result = rcol.replace(base, bytes(mlod)).replace(vbuf_index, bytes(vbuf))
     result = result.replace(ibuf_index, bytes(ibuf))
+    result = result.sync_vbsi(vbuf_index, vertex_count)
     parsed = Rcol.parse(result.to_bytes())
     check = parsed.inspect_mlod()[0]
     if check['vertex_count'] != vertex_count or check['triangle_count'] != triangle_count:
         raise ValueError('Independent proxy roundtrip count mismatch')
     return parsed
+
+
+def grow_modl_bounds(entries, proxy_bounds) -> dict | None:
+    """Decimation can push proxy vertices past the visual bounds (e.g. a few
+    millimetres below the floor); the MODL box must still enclose every LOD."""
+    modls = [entry for entry in entries if entry['type'] == MODL]
+    if len(modls) != 1:
+        raise ValueError('Expected one MODL resource')
+    modl = Rcol.parse(modls[0]['data'])
+    index = next(i for i, chunk in enumerate(modl.chunks) if chunk[:4] == b'MODL')
+    chunk = bytearray(modl.chunks[index])
+    old = struct.unpack_from('<6f', chunk, 12)
+    new = (*(min([old[i]] + [b[i] for b in proxy_bounds]) for i in range(3)),
+           *(max([old[i + 3]] + [b[i + 3] for b in proxy_bounds]) for i in range(3)))
+    if new == old:
+        return None
+    struct.pack_into('<6f', chunk, 12, *new)
+    data = modl.replace(index, bytes(chunk)).to_bytes()
+    modls[0]['data'] = data
+    modls[0]['raw'] = zlib.compress(data, 9)
+    modls[0]['comp'] = 0x5A42
+    return {'index': next(i for i, entry in enumerate(entries) if entry is modls[0]),
+            'bounds': list(new)}
 
 
 def main():
@@ -150,13 +176,19 @@ def main():
         old_data = matches[0]['data']
         replacement = encode_proxy(Rcol.parse(old_data), positions, triangles).to_bytes()
         matches[0]['data'] = replacement
-        matches[0]['raw'] = replacement
-        matches[0]['comp'] = 0
+        # Every in-game PASS package stores its MLODs zlib-compressed.
+        matches[0]['raw'] = zlib.compress(replacement, 9)
+        matches[0]['comp'] = 0x5A42
         changed_indexes.append(next(i for i, entry in enumerate(entries) if entry is matches[0]))
         groups.append({'group': f'{group:08X}', 'target': target,
                        'source_faces': original_faces, 'exported_vertices': len(positions),
                        'exported_triangles': len(triangles),
-                       'old_mlod_sha256': h(old_data), 'new_mlod_sha256': h(replacement)})
+                       'old_mlod_sha256': h(old_data), 'new_mlod_sha256': h(replacement),
+                       'bounds': Rcol.parse(replacement).inspect_mlod()[0]['bounds']})
+    proxy_bounds = [group.pop('bounds') for group in groups]
+    modl_change = grow_modl_bounds(entries, proxy_bounds)
+    if modl_change:
+        changed_indexes.append(modl_change['index'])
     write_package(header, entries, args.output)
     _, check_entries = read_package(args.output)
     if len(check_entries) != len(entries) or any(
@@ -167,6 +199,8 @@ def main():
     if sorted(changed) != sorted(changed_indexes):
         raise ValueError(f'Unexpected resource changes: {changed}')
     report = {'status': 'PROGRAMMATIC_PASS', 'groups': groups,
+              'modl_bounds_grown': bool(modl_change),
+              'modl_bounds': modl_change['bounds'] if modl_change else None,
               'changed_resource_count': len(changed),
               's4s_loaded': any(name.startswith('s4studio') for name in sys.modules),
               'input': str(args.input), 'output': str(args.output)}

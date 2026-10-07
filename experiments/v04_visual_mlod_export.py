@@ -192,6 +192,7 @@ def encode_visual(rcol: Rcol, packed):
         raise ValueError('Visual IBUF is not delta encoded')
     result = rcol.replace(base, bytes(mlod)).replace(vbuf_index, vbuf)
     result = result.replace(ibuf_index, ibuf_header + indices)
+    result = result.sync_vbsi(vbuf_index, vertex_count)
     result = patch_uv_materials(result, uv_scales)
     reopened = Rcol.parse(result.to_bytes())
     check = reopened.inspect_mlod()[1]
@@ -218,8 +219,9 @@ def main():
         if len(matches) != 1:
             raise ValueError(f'Expected one MLOD group {group:08X}')
         matches[0]['data'] = encode_visual(Rcol.parse(matches[0]['data']), packed).to_bytes()
-        matches[0]['raw'] = matches[0]['data']
-        matches[0]['comp'] = 0
+        # Every in-game PASS package stores its MLODs zlib-compressed.
+        matches[0]['raw'] = zlib.compress(matches[0]['data'], 9)
+        matches[0]['comp'] = 0x5A42
         group_stats.append({'group': f'{group:08X}', 'source_faces': source_faces,
                             'vertices': packed[2], 'triangles': packed[3],
                             'bounds': packed[4], 'uv_scales': packed[5]})

@@ -3,6 +3,12 @@
 Format references: Sims4Group MLOD documentation and the MIT-licensed
 sims-package2glb RCOL reader. No Sims 4 Studio code is imported or bundled.
 This module preserves private chunk payloads; it does not yet encode vertices.
+
+Each VBUF names a vertex-buffer swizzle-info chunk (VBSI) holding one segment
+per buffer: vertex size, vertex count, byte offset and one swizzle command per
+four bytes of vertex. s4pi's VBSI.FromMesh rebuilds it from the mesh
+(VertexCount = mesh vertex count, ByteOffset = stream offset). Every donor and
+in-game PASS package satisfies that; v06/v07 kept the donor counts.
 """
 from __future__ import annotations
 
@@ -13,6 +19,13 @@ from dataclasses import dataclass
 U32 = struct.Struct('<I')
 PAIR = struct.Struct('<II')
 MAX_CHUNKS = 4096
+SWIZZLE_32 = 1
+SWIZZLE_16X2 = 2
+# VRTF element format -> swizzle commands, for the formats in the supported
+# decorative layout (Short4, UByte4N, Short2, UByte4). Matches the donor VBSI
+# and s4pi's per-format mapping.
+FORMAT_SWIZZLES = {7: (SWIZZLE_16X2, SWIZZLE_16X2), 8: (SWIZZLE_32,),
+                   6: (SWIZZLE_16X2,), 4: (SWIZZLE_32,)}
 
 
 def u32(data: bytes, offset: int) -> int:
@@ -67,6 +80,15 @@ class Rcol:
         chunks[index] = data
         return Rcol(self.prefix, tuple(chunks))
 
+    def keys(self) -> tuple[list[tuple[int, int, int]], list[tuple[int, int, int]]]:
+        """Internal and external (type, group, instance) keys of this RCOL."""
+        _, _, _, external, count = struct.unpack_from('<5I', self.prefix)
+        keys = []
+        for index in range(count + external):
+            instance, kind, group = struct.unpack_from('<QII', self.prefix, 20 + 16 * index)
+            keys.append((kind, group, instance))
+        return keys[:count], keys[count:]
+
     def chunk_ref(self, value: int, base: int) -> int | None:
         if value == 0:
             return None
@@ -119,7 +141,9 @@ class Rcol:
             if len(vertex_buffer) < 16 or len(index_buffer) < 16:
                 raise ValueError(f'MLOD mesh {index} has a truncated buffer')
             if refs['vrtf'] is None:
-                stride = 8  # position-only shadow/proxy VBUF in this donor layout
+                # Position-only proxy (8 bytes) or drop-shadow plane (16 bytes):
+                # no VRTF, so the VBSI segment carries the vertex size.
+                stride = parse_vbsi(self.chunks[self.vbsi_index(refs['vbuf'], base)])[0][0]
             else:
                 stride = u32(self.chunks[refs['vrtf']], 8)
             if not 0 < stride <= 256:
@@ -129,6 +153,7 @@ class Rcol:
             index_end = 16 + (index_start + triangle_count * 3) * 2
             if vertex_end > len(vertex_buffer) or index_end > len(index_buffer):
                 raise ValueError(f'MLOD mesh {index} exceeds its buffers')
+            vbsi = self.check_vbsi(refs, base, u32(entry, 24), vertex_count, stride, index)
             index_values = []
             current = 0
             delta = bool(u32(index_buffer, 8) & 1)
@@ -147,9 +172,92 @@ class Rcol:
                 'index_offset': index_start, 'vertex_stride': stride,
                 'index_min': min(index_values), 'index_max': max(index_values),
                 'bounds': bounds,
-                'refs': refs,
+                'refs': refs, 'vbsi': vbsi,
             })
             pos += size
         if pos > len(chunk):
             raise ValueError('MLOD mesh list overflow')
         return meshes
+
+    def vbsi_index(self, vbuf_index: int, base: int) -> int:
+        index = self.chunk_ref(u32(self.chunks[vbuf_index], 12), base)
+        if index is None:
+            raise ValueError(f'VBUF chunk {vbuf_index} has no swizzle info')
+        return index
+
+    def check_vbsi(self, refs: dict, base: int, stream_offset: int,
+                   vertex_count: int, stride: int, mesh_index: int) -> dict:
+        index = self.vbsi_index(refs['vbuf'], base)
+        segments = parse_vbsi(self.chunks[index])
+        if len(segments) != 1:
+            raise ValueError(f'MLOD mesh {mesh_index} VBSI has {len(segments)} segments')
+        size, count, offset, commands = segments[0]
+        expected = expected_swizzles(self.chunks[refs['vrtf']] if refs['vrtf'] is not None else None,
+                                     size)
+        problems = []
+        if size != stride:
+            problems.append(f'vertex size {size} != stride {stride}')
+        if count != vertex_count:
+            problems.append(f'vertex count {count} != mesh vertex count {vertex_count}')
+        if offset != stream_offset:
+            problems.append(f'byte offset {offset} != stream offset {stream_offset}')
+        if tuple(commands) != expected:
+            problems.append(f'swizzles {commands} != {list(expected)}')
+        if problems:
+            raise ValueError(f'MLOD mesh {mesh_index} VBSI stale: ' + '; '.join(problems))
+        return {'chunk': index, 'vertex_size': size, 'vertex_count': count,
+                'byte_offset': offset}
+
+    def sync_vbsi(self, vbuf_index: int, vertex_count: int, stream_offset: int = 0) -> 'Rcol':
+        """Rewrite the VBSI named by one VBUF for a re-encoded vertex buffer."""
+        base = next(i for i, chunk in enumerate(self.chunks) if chunk[:4] == b'MLOD')
+        index = self.vbsi_index(vbuf_index, base)
+        users = [i for i, chunk in enumerate(self.chunks)
+                 if chunk[:4] == b'VBUF' and self.chunk_ref(u32(chunk, 12), base) == index]
+        if users != [vbuf_index]:
+            raise ValueError(f'VBSI chunk {index} is shared by VBUF chunks {users}')
+        segments = parse_vbsi(self.chunks[index])
+        if len(segments) != 1:
+            raise ValueError('Only single-segment VBSI is supported')
+        size = segments[0][0]
+        if len(self.chunks[vbuf_index]) != 16 + stream_offset + size * vertex_count:
+            raise ValueError('VBUF payload does not match VBSI vertex size and count')
+        patched = bytearray(self.chunks[index])
+        struct.pack_into('<II', patched, 8, vertex_count, stream_offset)
+        return self.replace(index, bytes(patched))
+
+
+def parse_vbsi(chunk: bytes) -> list[tuple[int, int, int, list[int]]]:
+    count = u32(chunk, 0)
+    if not 0 < count < 64:
+        raise ValueError('Invalid VBSI segment count')
+    pos = 4
+    segments = []
+    for _ in range(count):
+        size, vertex_count, offset = struct.unpack_from('<3I', chunk, pos)
+        pos += 12
+        if size == 0 or size % 4 or pos + size > len(chunk):
+            raise ValueError('Invalid VBSI segment')
+        commands = list(struct.unpack_from(f'<{size // 4}I', chunk, pos))
+        pos += size
+        segments.append((size, vertex_count, offset, commands))
+    if pos != len(chunk):
+        raise ValueError('VBSI has trailing bytes')
+    return segments
+
+
+def expected_swizzles(vrtf: bytes | None, vertex_size: int) -> tuple[int, ...]:
+    if vrtf is None:
+        # Donor proxies (8 bytes) and the shadow plane (16 bytes) are all 16x2.
+        return (SWIZZLE_16X2,) * (vertex_size // 4)
+    if vrtf[:4] != b'VRTF':
+        raise ValueError('Expected VRTF chunk')
+    count = u32(vrtf, 12)
+    elements = sorted(struct.unpack_from('<4B', vrtf, 20 + 4 * i) for i in range(count))
+    elements.sort(key=lambda element: element[3])
+    commands = []
+    for usage, _usage_index, fmt, _offset in elements:
+        if fmt not in FORMAT_SWIZZLES:
+            raise ValueError(f'Unsupported VRTF format {fmt} for usage {usage}')
+        commands.extend(FORMAT_SWIZZLES[fmt])
+    return tuple(commands)

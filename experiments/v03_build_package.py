@@ -66,11 +66,13 @@ def preflight(blender: Path | None, node: Path | None, template: Path,
         scripts.append('experiments/encode_dst1_compatible.cjs')
         if node is None or not node.is_file():
             missing.append(f'Node not found: {node or "not configured"}')
+    scripts.append('experiments/v08_place_on_donor.py')
     if mesh_exporter == 'independent_local':
         scripts += ['experiments/v04_visual_mlod_export.py',
                     'experiments/v04_proxy_mlod_export.py']
     else:
-        scripts += ['experiments/v02_headless_mesh_spike.py']
+        scripts += ['experiments/v02_headless_mesh_spike.py',
+                    'experiments/v08_mesh_normalize.py']
     for script in scripts:
         if not (ROOT / script).is_file():
             missing.append(f'Script not found: {script}')
@@ -166,9 +168,58 @@ def validate_recipe(donor: Path, recipe: dict) -> dict:
                 diffuse_height=struct.unpack_from('<I', diffuse, 12)[0])
 
 
+DST = 0x00B2D882
+ANCHOR_TOLERANCE = 1e-3  # metres
+
+
+def mesh_closure(entries: list[dict], donor_entries: list[dict]) -> dict:
+    """Checks beyond COBJ: MODL->MLOD keys, MATD->texture ids, leftover donor ids."""
+    present = {(e['type'], e['group'], e['instance']) for e in entries}
+    instances = {e['instance'] for e in entries}
+    modl = next(Rcol.parse(e['data']) for e in entries if e['type'] == MODL)
+    _, external = modl.keys()
+    missing = [f'{t:08X}:{g:08X}:{i:016X}' for t, g, i in external if (t, g, i) not in present]
+    if missing:
+        raise ValueError(f'MODL references missing MLODs: {missing}')
+    textures = {e['instance'] for e in entries if e['type'] == DST}
+    referenced = set()
+    for entry in entries:
+        if entry['type'] not in (MLOD, MODL):
+            continue
+        for chunk in Rcol.parse(entry['data']).chunks:
+            if chunk[:4] != b'MATD':
+                continue
+            for at in range(len(chunk) - 7):
+                value = struct.unpack_from('<Q', chunk, at)[0]
+                if value in textures:
+                    referenced.add(value)
+    if referenced != textures:
+        raise ValueError('Not every DST texture is referenced by a material')
+    donor_ids = {e['instance'] for e in donor_entries} - instances
+    stale = []
+    for entry in entries:
+        data = entry['data']
+        for at in range(len(data) - 7):
+            for value in (struct.unpack_from('<Q', data, at)[0],
+                          struct.unpack_from('>Q', data, at)[0]):
+                if value in donor_ids:
+                    stale.append(f"{entry['type']:08X}@{at}")
+    hi_lo = {((i & 0xFFFFFFFF) << 32) | (i >> 32) for i in donor_ids}
+    for entry in entries:
+        data = entry['data']
+        for at in range(len(data) - 7):
+            if struct.unpack_from('<Q', data, at)[0] in hi_lo:
+                stale.append(f"{entry['type']:08X}@{at}")
+    if stale:
+        raise ValueError(f'Donor instance ids survive remint: {stale[:8]}')
+    return dict(modl_external_refs=len(external), material_texture_refs=len(referenced),
+                leftover_donor_ids=0)
+
+
 def audit_final(path: Path, name: str, description: str, price: int,
-                recipe: dict, mesh_exporter: str) -> dict:
+                recipe: dict, mesh_exporter: str, donor: Path) -> dict:
     _, entries = read_package(path)
+    _, donor_entries = read_package(donor)
     tgis = {(e['type'], e['group'], e['instance']) for e in entries}
     objds = [e for e in entries if e['type'] == OBJD]
     cobjs = [e for e in entries if e['type'] == COBJ]
@@ -218,13 +269,34 @@ def audit_final(path: Path, name: str, description: str, price: int,
         for bounds in all_bounds for axis in range(3))
     if mesh_exporter == 'independent_local' and not bbox_covers_lods:
         raise ValueError('MODL bounding box does not enclose all MLODs')
+    # inspect_mlod() above already rejected any stale VBSI (vertex size, count,
+    # byte offset or swizzles), the defect shared by v06, v07 and the S4S mug.
+    uncompressed = [f"{e['type']:08X}:{e['group']:08X}" for e in entries
+                    if e['type'] in (MLOD, MODL) and e['comp'] != 0x5A42]
+    if uncompressed:
+        raise ValueError(f'Mesh resources not zlib-compressed: {uncompressed}')
+    donor_lod0 = next(Rcol.parse(e['data']) for e in donor_entries
+                      if e['type'] == MLOD and e['group'] == 0).inspect_mlod()
+    anchor = max(donor_lod0, key=lambda mesh: mesh['vertex_count'])['bounds']
+    lod0 = next(Rcol.parse(e['data']) for e in entries
+                if e['type'] == MLOD and e['group'] == 0).inspect_mlod()
+    placed = max(lod0, key=lambda mesh: mesh['vertex_count'])['bounds']
+    anchor_error = max(abs((placed[0] + placed[3]) - (anchor[0] + anchor[3])) / 2,
+                       abs((placed[2] + placed[5]) - (anchor[2] + anchor[5])) / 2,
+                       abs(placed[1] - anchor[1]))
+    if anchor_error > ANCHOR_TOLERANCE:
+        raise ValueError(f'LOD0 is {anchor_error:.3f} m off the donor footprint anchor')
+    closure = mesh_closure(entries, donor_entries)
     return dict(package_sha256=h(path.read_bytes()), package_bytes=path.stat().st_size,
                 resource_count=len(entries), unique_tgi_count=len(tgis),
                 shared_stbl_base=True, unresolved_cobj_references=0,
                 catalog_name=name, catalog_description=description, price=actual_price,
                 independent_rcol_roundtrip=True, lod_triangles=lods,
                 modl_embedded_triangles=[mesh['triangle_count'] for mesh in embedded],
-                modl_bounds=modl_bounds, modl_bbox_covers_lods=bbox_covers_lods)
+                modl_bounds=modl_bounds, modl_bbox_covers_lods=bbox_covers_lods,
+                vbsi_consistent=True, mesh_resources_zlib=True,
+                lod0_bounds=placed, donor_lod0_bounds=anchor,
+                lod0_anchor_error_m=anchor_error, **closure)
 
 
 def main() -> None:
@@ -319,6 +391,17 @@ def main() -> None:
         basecolor = engine / 'basecolor.png'
         if not blend.is_file() or not basecolor.is_file():
             raise RuntimeError('GLB engine did not produce blend and basecolor')
+        placed = work / 'placed.blend'
+        placement_report = work / 'placement_report.json'
+        run('01b_place_on_donor', [str(blender), '--factory-startup', '--background',
+            '--python', str(ROOT / 'experiments/v08_place_on_donor.py'), '--',
+            '--blend', str(blend), '--donor', str(donor), '--output', str(placed),
+            '--report', str(placement_report)], output, report)
+        placement = json.loads(placement_report.read_text(encoding='utf-8'))
+        if placement.get('status') != 'PROGRAMMATIC_PASS' or placement.get('s4s_loaded'):
+            raise RuntimeError('Donor placement did not pass its audit')
+        report['placement'] = placement
+        blend = placed
         mesh = work / '01_mesh.package'
         if mesh_exporter == 'independent_local':
             visual = work / '01_visual.package'
@@ -346,8 +429,14 @@ def main() -> None:
             report['independent_visual_audit'] = visual_audit
             report['independent_proxy_audit'] = proxy_audit
         else:
+            exported = work / '01_mesh_s4s.package'
             run('02_blend_to_mlod', mesh_export_command(mesh_exporter,
-                blender, blend, donor, mesh), output, report)
+                blender, blend, donor, exported), output, report)
+            normalize_report = work / 'mesh_normalize_report.json'
+            run('02n_mesh_normalize', [sys.executable,
+                str(ROOT / 'experiments/v08_mesh_normalize.py'), '--input', str(exported),
+                '--output', str(mesh), '--report', str(normalize_report)], output, report)
+            report['mesh_normalize'] = json.loads(normalize_report.read_text(encoding='utf-8'))
         if mesh_exporter == 's4s_local' and args.lod_strategy == 'generated':
             all_lods = work / '01_mesh_all_lods.package'
             lod_report = work / 'lod_report.json'
@@ -402,7 +491,7 @@ def main() -> None:
         package = output / 'CCStudio.package'
         shutil.copyfile(final_stage, package)
         report['final_audit'] = audit_final(package, args.name, args.description,
-                                            price, recipe, mesh_exporter)
+                                            price, recipe, mesh_exporter, donor)
         report['package'] = str(package)
         report['blend'] = str(blend)
         report['basecolor'] = str(basecolor)
