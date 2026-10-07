@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "id": "decor_vase",
+  "mesh_exporter": "s4s_local",
+  "blend_template": "templates/decor_vase/template.blend",
+  "donor_env": "CCSTUDIO_DECOR_VASE_DONOR",
+  "diffuse": {
+    "type": "00B2D882",
+    "group": "80000000",
+    "instance": "B2FB5984DC8F5D06",
+    "fourcc": "DST1"
+  },
+  "catalog": {
+    "stbl_locale_count": 18,
+    "price_offset": 16,
+    "base_price": 1300
+  }
+}

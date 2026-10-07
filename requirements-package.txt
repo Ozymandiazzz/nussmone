@@ -1,0 +1,2 @@
+# Verified with Pillow's DDS/DXT1 writer on the independent package pipeline.
+Pillow==12.3.0

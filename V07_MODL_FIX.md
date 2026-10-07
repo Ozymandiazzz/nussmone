@@ -1,0 +1,11 @@
+# v0.7: MODL correction after first in-game independent build
+
+The user loaded `output/v06_python_dst1_full_smoke/CCStudio.package`. Build/Buy showed **CCStudio Python Texture Smoke**, §10, with a red X thumbnail. Clicking the item produced no placement ghost and no popup. No new `LastException` or `lastCrash` file was present in the Sims 4 user folder when checked on 2026-10-06. The file in `Mods/CCStudio/CCStudio.package` matched the v06 build by SHA-256.
+
+The earlier offline audit checked five external MLOD resources but missed the sixth, low-detail MLOD embedded in the MODL resource. That embedded mesh remained the donor vase. The MODL overall bounds also remained those of the vase and did not enclose the new high/medium mesh. This is a verified structural defect, but its causal role in the in-game failure is still a hypothesis until the corrected package is tested.
+
+`experiments/v04_visual_mlod_export.py` now rebuilds the embedded MODL visual mesh from the same GLB-derived blend at a lower target and expands the MODL bounds to contain the original and generated geometry. It preserves the donor's MODL DBPF compression. `experiments/independent_rcol.py` now validates finite, ordered per-mesh bounds. The final package audit checks the embedded MLOD and requires MODL bounds to enclose all LODs for `independent_local` builds.
+
+The new audit rejects v06 with `MODL bounding box does not enclose all MLODs`. A new full build produced [v07_modl_fix_full/CCStudio.package](output/v07_modl_fix_full/CCStudio.package) and [build_report.json](output/v07_modl_fix_full/build_report.json): seven stages passed, 34 resources, zero unresolved COBJ references, embedded MODL main mesh 754 triangles, and MODL bounds contain all nine mesh cuts. Comparing the packages **before remint**, only the MODL resource changed between v06 and v07; all five external MLODs, DST1 source, and donor/catalog inputs stayed the same.
+
+Next in-game check: close the game, replace the v06 file in `Mods` with only the v07 `CCStudio.package`, reopen Build/Buy, search **CCStudio MODL Fix**, click it, and report whether a placement ghost appears. This one comparison tests the specific MODL fix. Do not treat the offline PASS as an in-game PASS.

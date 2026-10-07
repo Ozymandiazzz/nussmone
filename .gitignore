@@ -5,3 +5,4 @@ output/
 # Local drops at repo root. Validated copies live in fixtures/.
 /funcionasera.blend
 /*.glb
+experiments/node_modules/
